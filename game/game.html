@@ -52,6 +52,9 @@ canvas#game { display: block; width: 100%; height: 100%; touch-action: none; use
 .track i.end { background: var(--crimson); }
 
 .hud-chip { justify-self: start; background: var(--marigold); color: var(--navy); font-size: 13px; font-weight: 800; padding: 0 8px; border-radius: 3px; }
+.hud-live { font-size: 13px; font-weight: 600; color: var(--paper); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-now { font-size: 14px; font-weight: 600; color: var(--paper); margin: 0; text-align: center; }
+.live-now::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); margin-right: 6px; vertical-align: 1px; }
 .corner { position: absolute; z-index: 3; background: var(--panel); color: var(--paper); border: 1px solid var(--muted);
   font: 600 13px var(--body); padding: 6px 10px; border-radius: 3px; cursor: pointer; }
 .mute { right: 10px; top: 10px; }
@@ -145,6 +148,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       </div>
       <div class="track" id="hudTrack"></div>
       <div class="hud-chip" id="hudHelmet" hidden>Helmet on: one crash covered</div>
+      <div class="hud-live" id="hudLive" hidden></div>
     </div>
 
     <section class="sheet rules" id="home">
@@ -156,13 +160,14 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         <div class="kicker" id="homeKicker">Road #1</div>
         <h1><small>रिङ रोड रस</small>Ring Road Rush</h1>
         <div class="name-row" id="nameRow" hidden>
-          <label for="riderName">Your name on the road and rider list (optional)</label>
-          <input id="riderName" type="text" maxlength="24" autocomplete="nickname" placeholder="Leave empty to stay anonymous">
+          <label for="riderName">Your name, so other riders can see you</label>
+          <input id="riderName" type="text" maxlength="24" autocomplete="nickname" placeholder="Type a name or nickname (optional)">
         </div>
         <div class="rule-block" id="rulesBody" style="gap:14px"></div>
       </div>
       <div class="rules-foot">
         <button class="btn" id="startBtn" type="button">Start riding</button>
+        <p class="live-now" id="liveHome" hidden></p>
         <p class="note" id="riders" hidden></p>
       </div>
     </section>
@@ -187,6 +192,11 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         <div><b id="resBest">0</b><span>Today's best</span></div>
         <div><b id="resMomo">0</b><span>Momos</span></div>
         <div><b id="resStreak">1</b><span>Day streak</span></div>
+      </div>
+      <p class="live-now" id="liveResult" hidden></p>
+      <div class="name-row" id="nameRow2" hidden>
+        <label for="riderName2">Your name, so others can see you</label>
+        <input id="riderName2" type="text" maxlength="24" autocomplete="nickname" placeholder="Type a name or nickname">
       </div>
       <div class="btns">
         <button class="btn" id="retryBtn" type="button">Ride again</button>
@@ -280,6 +290,50 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     fetch(API + '/sky').then(r => r.ok ? r.json() : null).then(d => {
       if (d) { sky.weather = weatherFromCode(d.code); refreshSide(); }
     }).catch(() => {});
+  }
+
+  /* ---------- Live riders: anyone on the road right now, updated every few seconds ---------- */
+  const LIVE_EVERY = 4;
+  let liveRiders = [];
+  const liveWho = r => r.name || 'Rider ' + r.id;
+  const liveKm = r => ((r.d * 10) / PX_PER_KM).toFixed(1) + ' km';
+  function showLive() {
+    const list = liveRiders.slice().sort((a, b) => b.d - a.d);
+    const hud = document.getElementById('hudLive');
+    if (hud) {
+      hud.hidden = !list.length;
+      hud.textContent = list.length ? 'Riding now: ' + list.slice(0, 3).map(r => liveWho(r) + ' ' + liveKm(r)).join(', ') + (list.length > 3 ? ' +' + (list.length - 3) : '') : '';
+    }
+    for (const id of ['liveHome', 'liveResult']) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      el.hidden = !list.length;
+      el.textContent = list.length ? 'Riding now: ' + list.slice(0, 4).map(liveWho).join(', ') + (list.length > 4 ? ' +' + (list.length - 4) + ' more' : '') : '';
+    }
+  }
+  function takeLive(d) {
+    if (!d || !Array.isArray(d.riders)) return;
+    const now = performance.now();
+    const me = getPlayerId().slice(0, 4);
+    liveRiders = d.riders.filter(r => r.id !== me).map(r => Object.assign({ at: now }, r));
+    showLive();
+  }
+  function sendLive(g) {
+    if (!API) return;
+    const v = speedAt(kmOf(g)) * g.slow;
+    fetch(API + '/live', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ player: getPlayerId(), name: riderName() || undefined, d: Math.round(g.dist / 10), x: Math.round(g.x), v: Math.round(v) })
+    }).then(r => r.ok ? r.json() : null).then(takeLive).catch(() => {});
+  }
+  function leaveLive() {
+    if (!API) return;
+    const body = JSON.stringify({ player: getPlayerId(), done: true });
+    try { navigator.sendBeacon(API + '/live', new Blob([body], { type: 'application/json' })); } catch (e) { /* the entry expires by itself */ }
+  }
+  function pollLive() {
+    if (!API || mode === 'play' || document.hidden) return;
+    fetch(API + '/live', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(takeLive).catch(() => {});
   }
 
   /* ---------- Ghost riders: recordings of today's rides, replayed on the same road ---------- */
@@ -577,11 +631,26 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     for (let l = 0; l < 4; l++) signalHead(c, laneX(l), o.y - 34, o.greens.includes(l));
   }
   function drawGhost(c, x, y, color, down) {
-    c.save(); c.translate(x, y); if (down) c.rotate(1.2);
+    c.save(); c.translate(x, y); c.scale(.72, .72); if (down) c.rotate(1.2);
     c.fillStyle = '#14141a'; rr(c, -3.5, -26, 7, 14, 3); c.fill(); rr(c, -3.5, 12, 7, 14, 3); c.fill();
     c.fillStyle = color; rr(c, -9, -17, 18, 36, 7); c.fill();
     c.fillStyle = '#f2f2e6'; c.beginPath(); c.arc(0, -1, 7, 0, 7); c.fill();
     c.restore();
+  }
+  function renderLive(g, py) {
+    const now = performance.now();
+    for (const r of liveRiders) {
+      const age = Math.min(6, (now - r.at) / 1000), y = py - (r.d * 10 + r.v * age - g.dist);
+      if (y < -40 || y > H + 40) continue;
+      /* Never draw a live rider on top of the player's own scooter */
+      if (Math.abs(r.x - g.x) < 36 && Math.abs(y - py) < 76) continue;
+      drawGhost(ctx, r.x, y, '#00a8ff', false);
+      ctx.font = '600 12px Mukta, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3;
+      const label = liveWho(r);
+      ctx.strokeStyle = 'rgba(9,18,56,.95)'; ctx.strokeText(label, r.x, y - 28);
+      ctx.fillStyle = '#fff'; ctx.fillText(label, r.x, y - 28);
+      ctx.fillStyle = '#27d17f'; ctx.beginPath(); ctx.arc(r.x - ctx.measureText(label).width / 2 - 7, y - 28, 3, 0, 7); ctx.fill();
+    }
   }
   function renderGhosts(g, py) {
     g.ghosts.forEach((gh, n) => {
@@ -589,13 +658,15 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       const j = Math.min(count - 1, i + 1), f = Math.min(1, at - i);
       const d = (p[i * 2] + (p[j * 2] - p[i * 2]) * f) * 10, x = p[i * 2 + 1] + (p[j * 2 + 1] - p[i * 2 + 1]) * f;
       const y = py - (d - g.dist), down = at >= count - 1;
-      if (y < -40 || y > H + 40) return;
-      ctx.globalAlpha = down ? .3 : .5;
+      if (y < -40 || y > H + 40 || liveRiders.some(r => r.id === gh.id)) return;
+      /* A recording only shows once it is clearly ahead or behind, or where that rider crashed. It never rides glued to the player. */
+      if (!down && Math.abs(y - py) < 130) return;
+      ctx.globalAlpha = down ? .7 : .85;
       drawGhost(ctx, x, y, GHOST_COLORS[n % GHOST_COLORS.length], down);
-      ctx.globalAlpha = down ? .5 : .95;
-      ctx.font = '800 12px Mukta, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(9,18,56,.9)'; ctx.strokeText(gh.label, x, y - 36);
-      ctx.fillStyle = GHOST_COLORS[n % GHOST_COLORS.length]; ctx.fillText(gh.label, x, y - 36);
+      ctx.globalAlpha = 1;
+      ctx.font = '600 11px Mukta, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(9,18,56,.9)'; ctx.strokeText(gh.label, x, y - 28);
+      ctx.fillStyle = '#fff4dc'; ctx.fillText(gh.label, x, y - 28);
       ctx.globalAlpha = 1;
     });
   }
@@ -847,6 +918,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     /* painted gate on the road, behind traffic */
     for (let i = g.gate - 1; i <= g.gate + 1; i++) if (i > 0) drawGate(i, py - (i * SEG_KM * PX_PER_KM - g.dist));
     renderGhosts(g, py);
+    if (mode === 'play') renderLive(g, py);
     const sorted = g.objs.slice().sort((a, b) => order[a.t] - order[b.t]);
     for (const o of sorted) if (o.y > -180) ART[o.t](ctx, o);
     if (g.cause) {
@@ -984,7 +1056,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     /* First ride of the day is the same road for everyone; each retry shuffles the traffic */
     G = newGame((seedFor(day) ^ Math.imul(save.tries - 1, 0x9e3779b1)) >>> 0, false);
     const me = API ? getPlayerId().slice(0, 4) : '';
-    G.ghosts = ghostList.map(gh => ({ path: gh.path, label: gh.id === me ? 'Your best' : (gh.name || 'Rider ' + gh.id) }));
+    /* At most 3 recordings, only real rides, never the player's own */
+    G.ghosts = ghostList.filter(gh => gh.id !== me && gh.km >= 2).slice(0, 3).map(gh => ({ id: gh.id, path: gh.path, label: gh.name || 'Rider ' + gh.id }));
     mode = 'play'; shake = 0;
     /* Full countdown and steering hint on the first ride; a quick restart after that */
     freeze = showHint ? 3.7 : .7;
@@ -998,6 +1071,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
 
   function pause() {
     if (mode !== 'play' || G.cause) return;
+    leaveLive();
     mode = 'paused'; keys.left = keys.right = false; drag = null;
     showHint = false;
     stage.classList.remove('playing');
@@ -1027,6 +1101,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     persist(); refreshSide();
     sendEvent('end', { km: +km.toFixed(2), score, momos: g.momos, cause: g.cause });
     sendGhost(g, km, score);
+    leaveLive();
+    pollLive();
     const road = save.day - LAUNCH + 1;
     $('resKicker').textContent = 'Road #' + road + ' · Try ' + save.tries + (newBest ? ' · New best' : '');
     $('resCause').textContent = CAUSES[g.cause][0];
@@ -1061,7 +1137,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
 
   /* ---------- Input ---------- */
   addEventListener('keydown', e => {
-    if (e.target && e.target.id === 'riderName') return;
+    if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'text') return;
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { keys.left = true; if (mode === 'play') { e.preventDefault(); if (!e.repeat) stepLane(G, -1); } }
     if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { keys.right = true; if (mode === 'play') { e.preventDefault(); if (!e.repeat) stepLane(G, 1); } }
     if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') { if (mode === 'play') pause(); else if (mode === 'paused' && !ui.pause.hidden) resume(); }
@@ -1121,7 +1197,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     en: {
       goalT: 'Your goal', goal: 'Ride as far as you can. One full lap of the Ring Road is 27 km. Your scooter moves by itself and gets faster, so you only steer.',
       steerT: 'How to steer', steer: 'The road has 4 lanes. On a phone, tap the left or right side of the screen, or swipe, to move one lane. On a computer, press ← → or A and D. Press P to pause.',
-      ghostT: 'Other riders', ghost: "Today's best riders appear as see-through scooters next to you. They are recordings of real rides, and they cannot hit you.",
+      ghostT: 'Other riders', ghost: "Anyone riding right now is listed at the top of the road. When they are near you on the road, you see a small blue scooter with their name and a green dot. Other small scooters are recordings of today's best rides. None of them can hit you.",
       stop: 'Hit one and your ride ends', slow: 'These make it harder', help: 'These help you',
       items: {
         bike: ['Motorbike', 'Weaves around its lane'], cycle: ['Cycle', 'Slow, and wobbles a little'],
@@ -1139,7 +1215,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     ne: {
       goalT: 'लक्ष्य', goal: 'सकेसम्म टाढा पुग्नुहोस्। रिङरोडको पूरा एक फन्को २७ किमी हो। स्कुटर आफैं अगाडि बढ्छ र बिस्तारै छिटो हुन्छ, तपाईंले मोड्ने मात्र हो।',
       steerT: 'कसरी मोड्ने', steer: 'सडकमा ४ लेन छन्। फोनमा स्क्रिनको दायाँ वा बायाँ छेउमा ट्याप वा स्वाइप गर्दा एक लेन सर्छ। कम्प्युटरमा ← → वा A र D थिच्नुहोस्। रोक्न P थिच्नुहोस्।',
-      ghostT: 'अरू खेलाडी', ghost: 'आजका उत्कृष्ट खेलाडी पारदर्शी स्कुटरमा छेउमै देखिन्छन्। यी साँचो राइडका रेकर्डिङ हुन्, यिनले ठोक्दैनन्।',
+      ghostT: 'अरू खेलाडी', ghost: 'अहिले खेलिरहेकाहरूको नाम बाटोको माथि देखिन्छ। तपाईंको नजिक आउँदा नाम र हरियो थोप्लासहितको सानो निलो स्कुटर देखिन्छ। अरू साना स्कुटर आजका उत्कृष्ट राइडका रेकर्डिङ हुन्। कसैले ठोक्दैनन्।',
       stop: 'ठोक्किनुभयो भने खेल सकिन्छ', slow: 'यिनले गाह्रो बनाउँछन्', help: 'यिनले मद्दत गर्छन्',
       items: {
         bike: ['मोटरबाइक', 'लेनभित्रै घुमाउँदै चल्छ'], cycle: ['साइकल', 'ढिलो चल्छ, अलिअलि हल्लिन्छ'],
@@ -1194,15 +1270,22 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   if (API) {
     loadGhosts();
     const riders = $('riders');
-    const notice = 'Your name and rides are public: on the stats page and as a ghost scooter. We save no location.';
+    const notice = 'Your name and rides are public. We save no location.';
     riders.textContent = notice;
     riders.hidden = false;
     $('nameRow').hidden = false;
     const nameBox = $('riderName');
     try { nameBox.value = localStorage.getItem(KEY + '.name') || ''; } catch (e) { /* no storage */ }
-    nameBox.addEventListener('input', () => { try { localStorage.setItem(KEY + '.name', nameBox.value); } catch (e) { /* no storage */ } });
+    const nameBox2 = $('riderName2');
+    nameBox2.value = nameBox.value;
+    $('nameRow2').hidden = false;
+    const syncName = from => { nameBox.value = nameBox2.value = from.value; try { localStorage.setItem(KEY + '.name', from.value); } catch (e) { /* no storage */ } };
+    nameBox.addEventListener('input', () => syncName(nameBox));
+    nameBox2.addEventListener('input', () => syncName(nameBox2));
+    pollLive();
+    setInterval(pollLive, 20000);
     fetch(API + '/stats').then(r => r.ok ? r.json() : null).then(s => {
-      if (s && s.today && s.today.players > 0) riders.textContent = s.today.players.toLocaleString('en-US') + (s.today.players === 1 ? ' rider' : ' riders') + ' on the road today. ' + notice;
+      if (s && s.today && s.today.players > 0) riders.textContent = s.today.players.toLocaleString('en-US') + (s.today.players === 1 ? ' rider' : ' riders') + ' today. ' + notice;
     }).catch(() => {});
   }
 
@@ -1219,7 +1302,13 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(.05, (now - last) / 1000); last = now;
-    if (mode === 'play') { if (freeze > 0) freeze -= dt; else update(G, dt); }
+    if (mode === 'play') {
+      if (freeze > 0) freeze -= dt;
+      else {
+        update(G, dt);
+        if (API && !G.cause) { G.liveIn = (G.liveIn || 0) - dt; if (G.liveIn <= 0) { G.liveIn = LIVE_EVERY; sendLive(G); } }
+      }
+    }
     shake = Math.max(0, shake - dt);
     if (mode === 'play') updateHud(G);
     render(G);
