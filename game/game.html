@@ -42,6 +42,7 @@ canvas#game { display: block; width: 100%; height: 100%; touch-action: none; use
   background: linear-gradient(rgba(9,18,56,.85), rgba(9,18,56,0)); }
 .hud-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-variant-numeric: tabular-nums; font-weight: 600; }
 .hud-next { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; }
+@media (max-width: 360px) { .hud-word { display: none; } .hud-nums { gap: 8px; font-size: 14px; } }
 .hud-next b { color: var(--marigold); font-weight: 800; }
 .hud-nums { display: flex; gap: 12px; flex: none; font-size: 15px; }
 .hud-nums .score { color: var(--marigold); font-weight: 800; }
@@ -59,7 +60,9 @@ canvas#game { display: block; width: 100%; height: 100%; touch-action: none; use
 .board li span:nth-child(2) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .board li.me { color: var(--marigold); font-weight: 800; }
 .board a { color: var(--paper); font-size: 14px; }
-.levels { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.levels { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; min-width: 0; min-height: 34px; flex-shrink: 0; padding-block: 2px; }
+.levels::-webkit-scrollbar { display: none; }
+.levels span, .levels button { flex: none; white-space: nowrap; }
 .levels button { appearance: none; background: transparent; color: var(--paper); border: 1px solid var(--muted); border-radius: 3px; font: 600 13px var(--body); padding: 3px 9px; cursor: pointer; }
 .levels button[aria-pressed="true"] { background: var(--marigold); border-color: var(--marigold); color: var(--navy); }
 .hud-sky { font-size: 12px; color: var(--paper); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
@@ -102,6 +105,7 @@ canvas#game { display: block; width: 100%; height: 100%; touch-action: none; use
 .points b { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; color: var(--marigold); }
 .points span { display: block; font-size: 13px; line-height: 1.2; color: var(--muted); }
 .link { appearance: none; background: none; border: 0; padding: 2px 0; color: var(--paper); font: 600 14px var(--body); text-decoration: underline; cursor: pointer; justify-self: start; }
+#resKicker { padding-right: 88px; }
 .kicker { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--marigold); font-variant-numeric: tabular-nums; }
 h1 { font: 400 clamp(32px, 10vw, 40px)/1 var(--display); margin: 0; text-wrap: balance; }
 h1 small { display: block; font-size: .5em; color: var(--marigold); margin-bottom: 2px; }
@@ -155,7 +159,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
 
     <div class="hud" id="hud" hidden>
       <div class="hud-row">
-        <div class="hud-next"><span id="hudStage">Level 1</span> · Next: <b id="hudNext">Tinkune</b></div>
+        <div class="hud-next"><span id="hudStage">Level 1</span><span class="hud-word"> · Next:</span> <b id="hudNext">Tinkune</b></div>
         <div class="hud-nums">
           <span id="hudKm">0.0 km</span>
           <span id="hudMomo">🥟 0</span>
@@ -223,6 +227,10 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         <div><b id="resMomo">0</b><span>Momos</span></div>
         <div><b id="resStreak">1</b><span>Day streak</span></div>
       </div>
+      <div class="btns">
+        <button class="btn" id="retryBtn" type="button">Ride again</button>
+        <button class="btn alt" id="copyBtn" type="button">Copy best run</button>
+      </div>
       <div class="levels" id="levelsResult" hidden></div>
       <div class="levels" id="skyResult" hidden></div>
       <p class="live-now" id="liveResult" hidden></p>
@@ -230,10 +238,6 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         <label for="riderName2">Your name (needed to ride)</label>
         <input id="riderName2" type="text" maxlength="24" autocomplete="nickname" placeholder="Type a name or nickname" required>
         <p class="name-err" id="nameErr2" role="alert" hidden>Type a name to ride again.</p>
-      </div>
-      <div class="btns">
-        <button class="btn" id="retryBtn" type="button">Ride again</button>
-        <button class="btn alt" id="copyBtn" type="button">Copy best run</button>
       </div>
       <p class="note" id="copyNote" role="status">Paste it in your group chat and see who gets furthest.</p>
       <textarea id="fallback" hidden readonly aria-label="Your result to copy"></textarea>
@@ -1383,8 +1387,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       const myName = !g.attract && riderName();
       if (myName) {
         ctx.font = '600 11px Mukta, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3;
-        ctx.strokeStyle = 'rgba(9,18,56,.85)'; ctx.strokeText(myName, g.x, py + 38);
-        ctx.fillStyle = '#fff4dc'; ctx.fillText(myName, g.x, py + 38);
+        ctx.strokeStyle = 'rgba(9,18,56,.85)'; ctx.strokeText(myName, g.x, py - 36);
+        ctx.fillStyle = '#fff4dc'; ctx.fillText(myName, g.x, py - 36);
       }
     }
     renderSky(g, py);
