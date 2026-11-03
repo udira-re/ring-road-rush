@@ -1,0 +1,56 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ring Road Rush stats</title>
+<meta name="robots" content="noindex">
+<style>
+:root { color-scheme: dark; --navy:#0d1a4a; --paper:#fff4dc; --muted:#b9c2e6; --marigold:#ffb000; --crimson:#dc143c; --line:rgba(255,244,220,.2); }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--navy); color: var(--paper); font: 16px/1.4 system-ui, sans-serif; padding: 24px max(16px, env(safe-area-inset-left)); }
+main { max-width: 860px; margin: 0 auto; display: grid; gap: 28px; }
+h1 { margin: 0; font-size: 28px; color: var(--marigold); }
+h2 { margin: 0 0 8px; font-size: 16px; color: var(--marigold); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; font-variant-numeric: tabular-nums; }
+.tiles b { display: block; font-size: 32px; line-height: 1.1; }
+.tiles span { color: var(--muted); font-size: 14px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+td, th { text-align: left; padding: 5px 0; border-bottom: 1px solid var(--line); }
+td:not(:first-child), th:not(:first-child) { text-align: right; }
+th { color: var(--muted); font-weight: 600; font-size: 14px; }
+.wide { overflow-x: auto; }
+.wide table { min-width: 680px; }
+p { margin: 0; color: var(--muted); }
+</style></head><body><main>
+<h1>Ring Road Rush stats</h1>
+<p id="msg">Loading…</p>
+<div class="tiles" id="tiles"></div>
+<section><h2>Who's playing</h2><div class="wide"><table id="players"></table></div></section>
+<section><h2>Latest rides</h2><div class="wide"><table id="rides"></table></div></section>
+<section><h2>Last 14 days</h2><table id="days"></table></section>
+<section><h2>What ended rides</h2><table id="crashes"></table></section>
+<section><h2>Devices</h2><table id="devices"></table></section>
+</main><script>
+const NAMES = { cow:'Cow', micro:'Microbus', tempo:'Safa Tempo', truck:'Truck', dog:'Street dog', dig:'Dug-up road', bike:'Motorbike', cycle:'Cycle', walker:'Zebra crossing' };
+const n = v => Number(v || 0).toLocaleString('en-US');
+function table(id, heads, rows) {
+  const t = document.getElementById(id); t.textContent = '';
+  const tr = (cells, tag) => { const r = document.createElement('tr'); cells.forEach(c => { const e = document.createElement(tag); e.textContent = c; r.appendChild(e); }); t.appendChild(r); };
+  tr(heads, 'th'); rows.forEach(r => tr(r, 'td'));
+}
+fetch('/api/stats').then(r => { if (!r.ok) throw 0; return r.json(); }).then(s => {
+  document.getElementById('msg').textContent = 'Each rider is one browser, so one person on two devices shows twice. Riders appear by name only if they typed one.';
+  const tiles = [[s.all_time.players,'Players, all time'],[s.all_time.plays,'Rides, all time'],[s.today.players,'Players today'],[s.today.plays,'Rides today'],[s.returning_players,'Came back another day'],[s.rides.average_km,'Average km per ride'],[s.rides.full_laps,'Full laps'],[s.rides.top_score,'Top score']];
+  const box = document.getElementById('tiles');
+  tiles.forEach(([v,l]) => { const d = document.createElement('div'), b = document.createElement('b'), sp = document.createElement('span'); b.textContent = n(v); sp.textContent = l; d.append(b, sp); box.appendChild(d); });
+  table('days', ['Date','Players','Rides'], s.last_14_days.slice().reverse().map(d => [d.date, n(d.players), n(d.plays)]));
+  table('crashes', ['Cause','Rides'], s.crashes.map(c => [NAMES[c.cause] || c.cause, n(c.rides)]));
+  table('devices', ['Device','Players'], s.devices.map(d => [d.device, n(d.players)]));
+}).catch(() => { document.getElementById('msg').textContent = 'Could not load the stats. Refresh the page to try again.'; });
+const when = ms => new Date(ms).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const who = p => p.name || 'Rider ' + p.id;
+fetch('/api/players').then(r => { if (!r.ok) throw 0; return r.json(); }).then(d => {
+  table('players', ['Rider','Rides','Days played','Farthest km','Best score','Momos','Device','First played','Last played'],
+    d.players.map(p => [who(p), n(p.rides), n(p.days), p.best_km == null ? '-' : p.best_km.toFixed(1), n(p.best_score), n(p.momos), p.devices || '-', when(p.first_seen), when(p.last_seen)]));
+  table('rides', ['Rider','Time','Road','km','Score','Momos','Ended by','Device'],
+    d.recent_rides.map(r => [who(r), when(r.created_at), '#' + r.road, r.km.toFixed(1), n(r.score), n(r.momos), NAMES[r.cause] || r.cause, r.device]));
+}).catch(() => {});
+</script></body></html>
