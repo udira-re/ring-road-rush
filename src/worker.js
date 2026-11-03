@@ -112,16 +112,17 @@ async function readLive(env) {
   return json({ riders: results });
 }
 
-// Current Kathmandu weather code, fetched here so players' browsers never contact a third party.
+// Current weather codes, fetched here so players' browsers never contact a third party.
 async function skyNow() {
   try {
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=27.7172&longitude=85.324&current=weather_code';
+    // Kathmandu, Mugling, Pokhara and Jomsom: one for each level.
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=27.7172,27.855,28.2096,28.782&longitude=85.324,84.561,83.9856,83.729&current=weather_code';
     const r = await fetch(url, { cf: { cacheTtl: 1200, cacheEverything: true } });
     if (!r.ok) throw new Error('weather ' + r.status);
     const d = await r.json();
-    return json({ code: d.current.weather_code }, 200, { 'Cache-Control': 'public, max-age=600' });
+    return json({ codes: d.map(p => p.current.weather_code) }, 200, { 'Cache-Control': 'public, max-age=600' });
   } catch {
-    return json({ code: null });
+    return json({ codes: [null, null, null, null] });
   }
 }
 
