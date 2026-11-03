@@ -1,6 +1,6 @@
 # Ring Road Rush
 
-A daily scooter game set on Kathmandu's 27 km Ring Road. You dodge cows, motorbikes, cycles, microbuses, Safa Tempos, street dogs and dug-up road, ride under green traffic lights, and collect momos on the way. The first ride of the day is the same road for everyone, each retry shuffles the traffic, and a new road opens at midnight Nepal time. You can copy your result and paste it in a group chat.
+A daily scooter game set on Kathmandu's 27 km Ring Road. You dodge cows, motorbikes, cycles, microbuses, Safa Tempos, street dogs and dug-up road, ride under green traffic lights, and collect momos on the way. The first ride of the day is the same road for everyone, each retry shuffles the traffic, and a new road opens at midnight Nepal time. After the Ring Road the ride carries on along the Prithvi Highway to Pokhara and up the mountain road to Muktinath, with new scenery on each stage. You can copy your result and paste it in a group chat.
 
 There is also a small API that counts how many people play.
 
@@ -52,6 +52,8 @@ The road's look follows Nepal time and the current Kathmandu weather from Open-M
 `GET /api/stats` returns players, rides, returning players, crash causes, devices and the last 14 days.
 
 `POST /api/ghosts` saves a rider's best ride of the day, and `GET /api/ghosts` returns today's top 6 to replay as ghost scooters.
+
+`POST /api/live` updates a rider's position every 4 seconds and returns who is riding now. `GET /api/live` returns the same list.
 
 `GET /api/players` returns each rider's rides, best score and last played time, plus the latest 50 rides.
 
