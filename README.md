@@ -1,6 +1,6 @@
 # Ring Road Rush
 
-A daily scooter game set on Kathmandu's 27 km Ring Road. You dodge cows, motorbikes, cycles, microbuses, Safa Tempos, street dogs and dug-up road, ride under green traffic lights, take diversions round closed bridges, bounce over off-road stretches, and collect momos on the way. The first ride of the day is the same road for everyone, each retry shuffles the traffic, and a new road opens at midnight Nepal time. After the Ring Road you choose a way: west along the Prithvi Highway to Pokhara and Muktinath, or east through the Terai to Birgunj, Birtamod and Kakarbhitta. Each stage has its own scenery, plus mud, jams, narrow roads and water across the road. You can copy your result and paste it in a group chat.
+A daily scooter game set on Kathmandu's 27 km Ring Road. You dodge cows, motorbikes, cycles, microbuses, Safa Tempos, street dogs and dug-up road, ride under green traffic lights, take diversions round closed bridges, bounce over off-road stretches, and collect momos on the way. The first ride of the day is the same road for everyone, each retry shuffles the traffic, and a new road opens at midnight Nepal time. After the Ring Road you choose a way: west along the Prithvi Highway to Pokhara and Muktinath, or east through the Terai to Birgunj, Biratnagar and Kakarbhitta. Each stage has its own scenery, plus mud, jams, narrow roads and water across the road. You can copy your result and paste it in a group chat.
 
 There is also a small API that counts how many people play.
 
