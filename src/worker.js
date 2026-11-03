@@ -2,7 +2,7 @@
 // only /api/* reaches this code.
 const NPT_MS = 20700000; // Nepal is UTC+5:45
 const DAY_MS = 86400000;
-const CAUSES = new Set(['cow', 'micro', 'tempo', 'truck', 'dog', 'dig', 'bike', 'cycle', 'walker']);
+const CAUSES = new Set(['cow', 'micro', 'tempo', 'truck', 'dog', 'dig', 'bike', 'cycle', 'walker', 'bridge', 'wall']);
 const DEVICES = new Set(['phone', 'computer']);
 const ID_PATTERN = /^[A-Za-z0-9-]{8,64}$/;
 
@@ -115,14 +115,14 @@ async function readLive(env) {
 // Current weather codes, fetched here so players' browsers never contact a third party.
 async function skyNow() {
   try {
-    // Kathmandu, Mugling, Pokhara and Jomsom: one for each level.
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=27.7172,27.855,28.2096,28.782&longitude=85.324,84.561,83.9856,83.729&current=weather_code';
+    // Kathmandu, Mugling, Pokhara, Jomsom, Birgunj and Birtamod: one for each level.
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=27.7172,27.855,28.2096,28.782,27.0104,26.6436&longitude=85.324,84.561,83.9856,83.729,84.877,87.9893&current=weather_code';
     const r = await fetch(url, { cf: { cacheTtl: 1200, cacheEverything: true } });
     if (!r.ok) throw new Error('weather ' + r.status);
     const d = await r.json();
     return json({ codes: d.map(p => p.current.weather_code) }, 200, { 'Cache-Control': 'public, max-age=600' });
   } catch {
-    return json({ codes: [null, null, null, null] });
+    return json({ codes: [null, null, null, null, null, null] });
   }
 }
 
