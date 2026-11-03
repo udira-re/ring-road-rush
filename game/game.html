@@ -62,6 +62,8 @@ canvas#game { display: block; width: 100%; height: 100%; touch-action: none; use
 .levels { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .levels button { appearance: none; background: transparent; color: var(--paper); border: 1px solid var(--muted); border-radius: 3px; font: 600 13px var(--body); padding: 3px 9px; cursor: pointer; }
 .levels button[aria-pressed="true"] { background: var(--marigold); border-color: var(--marigold); color: var(--navy); }
+.hud-sky { font-size: 12px; color: var(--paper); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.levels button:disabled { opacity: .4; cursor: not-allowed; }
 .hud-live { font-size: 13px; font-weight: 600; color: var(--paper); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .live-now { font-size: 14px; font-weight: 600; color: var(--paper); margin: 0; text-align: center; }
 .live-now::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); margin-right: 6px; vertical-align: 1px; }
@@ -159,6 +161,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       </div>
       <div class="track" id="hudTrack"></div>
       <div class="hud-chip" id="hudHelmet" hidden>Helmet on: one crash covered</div>
+      <div class="hud-sky" id="hudSky"></div>
       <div class="hud-live" id="hudLive" hidden></div>
     </div>
 
@@ -170,6 +173,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       <div class="rules-scroll">
         <div class="kicker" id="homeKicker">Road #1</div>
         <h1><small>रिङ रोड रस</small>Ring Road Rush</h1>
+        <div class="levels" id="skyHome" hidden></div>
+        <p class="sub" id="skyNow"></p>
         <div class="rule-block" id="rulesBody" style="gap:14px"></div>
       </div>
       <div class="rules-foot">
@@ -207,6 +212,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         <div><b id="resStreak">1</b><span>Day streak</span></div>
       </div>
       <div class="levels" id="levelsResult" hidden></div>
+      <div class="levels" id="skyResult" hidden></div>
       <p class="live-now" id="liveResult" hidden></p>
       <div class="name-row" id="nameRow2" hidden>
         <label for="riderName2">Your name (needed to ride)</label>
@@ -304,7 +310,10 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   function rollDay() { const d = todayNumber(); if (save.day !== d) { save.day = d; save.best = null; save.tries = 0; } return d; }
 
   /* ---------- Sky: real Nepal time and Kathmandu weather. Looks only, no effect on the road or scoring. ---------- */
-  const sky = { phase: 'day', weather: 'clear' };
+  const SKY_PLACES = ['Kathmandu', 'Mugling', 'Pokhara', 'Jomsom'];
+  const SKY_MODES = [['live', 'Live'], ['day', 'Sunny'], ['night', 'Night'], ['rain', 'Rain'], ['fog', 'Fog']];
+  const sky = { phase: 'day', codes: [null, null, null, null], mode: 'live' };
+  try { const m = localStorage.getItem(KEY + '.sky'); if (SKY_MODES.some(x => x[0] === m)) sky.mode = m; } catch (e) { /* no storage */ }
   function nepalPhase() {
     const h = new Date(Date.now() + NPT_MS).getUTCHours();
     return h >= 5 && h < 7 ? 'dawn' : h >= 7 && h < 17 ? 'day' : h >= 17 && h < 19 ? 'dusk' : 'night';
@@ -315,13 +324,25 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     if (c === 45 || c === 48) return 'fog';
     return c === 3 ? 'cloudy' : 'clear';
   }
-  const SKY_WORDS = { dawn: 'Dawn', day: 'Daytime', dusk: 'Evening', night: 'Night', rain: 'rain', fog: 'fog', cloudy: 'cloudy', clear: 'clear' };
-  const skyLabel = () => SKY_WORDS[sky.phase] + ', ' + SKY_WORDS[sky.weather];
+  /* What the sky looks like at a given level: real weather for that place, unless the rider picked a look */
+  function skyAt(si) {
+    if (sky.forced) return sky.forced;
+    if (sky.mode === 'day') return { phase: 'day', weather: 'clear' };
+    if (sky.mode === 'night') return { phase: 'night', weather: 'clear' };
+    if (sky.mode === 'rain') return { phase: sky.phase, weather: 'rain' };
+    if (sky.mode === 'fog') return { phase: sky.phase, weather: 'fog' };
+    return { phase: sky.phase, weather: weatherFromCode(sky.codes[si]) };
+  }
+  const SKY_WORDS = { dawn: 'dawn', day: 'daytime', dusk: 'evening', night: 'night', rain: 'rain', fog: 'fog', cloudy: 'cloudy', clear: 'clear' };
+  const skyLabel = si => {
+    const k = skyAt(si);
+    return (sky.mode === 'live' ? SKY_PLACES[si] : 'Picked') + ': ' + SKY_WORDS[k.weather] + ', ' + SKY_WORDS[k.phase];
+  };
   function loadSky() {
     sky.phase = nepalPhase();
     if (!API) return;
     fetch(API + '/sky').then(r => r.ok ? r.json() : null).then(d => {
-      if (d) { sky.weather = weatherFromCode(d.code); refreshSide(); }
+      if (d && Array.isArray(d.codes)) { sky.codes = d.codes; refreshSide(); }
     }).catch(() => {});
   }
 
@@ -450,7 +471,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     const rng = mulberry32(seed);
     const lv = level || 0, base = LEVEL_STOP[lv] * SEG_KM * PX_PER_KM;
     const effKm = () => (at - base) / PX_PER_KM + lv * 9;
-    let at = base + 650, idx = 0, sinceHelmet = 0, sinceDig = 9, sinceDust = 0, sinceSignal = 3;
+    let at = base + 650, idx = 0, sinceHelmet = 0, sinceDig = 9, sinceDust = 0, sinceSignal = 3, sinceShelter = 5;
     const pick = list => list[Math.floor(rng() * list.length)];
     const shuffled = () => { const a = [0, 1, 2, 3]; for (let i = 3; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
@@ -518,7 +539,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
           const count = 3 + Math.floor(rng() * 3);
           for (let i = 0; i < count; i++) items.push({ t: 'momo', x: laneX(free), w: 28, h: 24, rate: 1, off: 90 + i * 44 });
         }
-        sinceHelmet++; sinceDig++; sinceDust++; sinceSignal++; idx++;
+        sinceHelmet++; sinceDig++; sinceDust++; sinceSignal++; sinceShelter++; idx++;
+        if (sinceShelter > 8 && kind !== 'dig') { sinceShelter = 0; items.push({ t: 'shelter', x: laneX(free), w: LANE_W, h: 64, rate: 1, off: 150 }); }
         if (sinceHelmet > 12 && rng() < .3) { sinceHelmet = 0; items.push({ t: 'helmet', x: laneX(lanes[2]), w: 30, h: 30, rate: 1, off: 60 }); }
 
         const row = { at: at + extra, kind, items };
@@ -630,7 +652,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     c.fillStyle = '#fff4dc'; c.fillRect(-4, -8, 8, 3);
     c.restore();
   }
-  function drawPlayer(c, x, y, lean, shield, flicker) {
+  function drawPlayer(c, x, y, lean, shield, flicker, coat) {
     if (flicker && Math.floor(performance.now() / 70) % 2) return;
     c.save(); c.translate(x, y); c.rotate(lean);
     if (shield) { c.strokeStyle = 'rgba(255,176,0,.9)'; c.lineWidth = 3; c.beginPath(); c.ellipse(0, 0, 21, 33, 0, 0, 7); c.stroke(); }
@@ -638,7 +660,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     c.fillStyle = '#14141a'; rr(c, -3.5, -28, 7, 15, 3); c.fill(); rr(c, -3.5, 13, 7, 15, 3); c.fill();
     c.fillStyle = '#dc143c'; rr(c, -9, -18, 18, 38, 7); c.fill();
     c.fillStyle = '#c9ccd6'; c.fillRect(-14, -14, 28, 3);
-    c.fillStyle = '#003893'; rr(c, -11, -5, 22, 15, 6); c.fill();
+    c.fillStyle = coat ? '#ffd21f' : '#003893'; rr(c, coat ? -13 : -11, -5, coat ? 26 : 22, coat ? 19 : 15, 6); c.fill();
     c.fillStyle = shield ? '#ffb000' : '#fff4dc'; c.beginPath(); c.arc(0, -1, 7.5, 0, 7); c.fill();
     c.restore();
   }
@@ -730,10 +752,27 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     });
   }
   function renderSky(g, py) {
-    if (sky.weather === 'cloudy' || sky.weather === 'rain') { ctx.fillStyle = sky.weather === 'rain' ? 'rgba(40,55,85,.2)' : 'rgba(60,70,90,.12)'; ctx.fillRect(0, 0, W, H); }
-    if (sky.phase === 'dawn') { ctx.fillStyle = 'rgba(255,190,130,.13)'; ctx.fillRect(0, 0, W, H); }
-    if (sky.phase === 'dusk') { ctx.fillStyle = 'rgba(255,110,50,.16)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = 'rgba(30,20,70,.16)'; ctx.fillRect(0, 0, W, H); }
-    if (sky.phase === 'night') {
+    const now = skyAt(routeAt(Math.floor(kmOf(g) / SEG_KM) + 1).si);
+    const skyNow = { phase: now.phase, weather: now.weather };
+    if (skyNow.weather === 'rain' && !g.attract && !g.rainTold && g.t > .4 && !g.coat) { g.rainTold = true; float(g, 200, H * .24, 'Rain! Ride under a Pati for a raincoat', '#ffd21f'); }
+    if (skyNow.weather === 'cloudy' || skyNow.weather === 'rain') { ctx.fillStyle = skyNow.weather === 'rain' ? 'rgba(40,55,85,.3)' : 'rgba(60,70,90,.22)'; ctx.fillRect(0, 0, W, H); }
+    if (skyNow.phase !== 'night' && skyNow.weather !== 'fog' && skyNow.weather !== 'rain') {
+      /* Cloud shadows drift over the road; a clear day also gets sunlight */
+      const drift = g.dist * .35 + (reduced ? 0 : performance.now() * .012);
+      ctx.fillStyle = skyNow.weather === 'cloudy' ? 'rgba(10,15,40,.2)' : 'rgba(10,15,40,.13)';
+      for (let i = 0; i < 4; i++) {
+        const span = H + 320, y = (drift + i * span / 4) % span - 160, x = 60 + hash(i + Math.floor((drift + i * span / 4) / span) * 7) * 280;
+        ctx.beginPath(); ctx.ellipse(x, y, 120, 70, .3, 0, 7); ctx.ellipse(x + 70, y + 26, 80, 48, .3, 0, 7); ctx.fill();
+      }
+      if (skyNow.weather === 'clear' && skyNow.phase === 'day') {
+        const sun = ctx.createRadialGradient(W - 30, 20, 10, W - 30, 20, 330);
+        sun.addColorStop(0, 'rgba(255,236,170,.42)'); sun.addColorStop(1, 'rgba(255,236,170,0)');
+        ctx.fillStyle = sun; ctx.fillRect(0, 0, W, H);
+      }
+    }
+    if (skyNow.phase === 'dawn') { ctx.fillStyle = 'rgba(255,190,130,.13)'; ctx.fillRect(0, 0, W, H); }
+    if (skyNow.phase === 'dusk') { ctx.fillStyle = 'rgba(255,110,50,.16)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = 'rgba(30,20,70,.16)'; ctx.fillRect(0, 0, W, H); }
+    if (skyNow.phase === 'night') {
       /* Dark road with a pool of headlight ahead of the scooter; traffic stays visible further out */
       const lx = g.x, ly = py - 150, dark = ctx.createRadialGradient(lx, ly, 70, lx, ly, 460);
       dark.addColorStop(0, 'rgba(8,12,42,.05)'); dark.addColorStop(.45, 'rgba(8,12,42,.42)'); dark.addColorStop(1, 'rgba(8,12,42,.68)');
@@ -742,15 +781,15 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       beam.addColorStop(0, 'rgba(255,240,190,.3)'); beam.addColorStop(1, 'rgba(255,240,190,0)');
       ctx.fillStyle = beam; ctx.beginPath(); ctx.moveTo(lx - 7, py - 24); ctx.lineTo(lx + 7, py - 24); ctx.lineTo(lx + 72, py - 300); ctx.lineTo(lx - 72, py - 300); ctx.fill();
     }
-    if (sky.weather === 'fog') {
+    if (skyNow.weather === 'fog') {
       const fog = ctx.createLinearGradient(0, 0, 0, H * .55);
       fog.addColorStop(0, 'rgba(205,212,220,.72)'); fog.addColorStop(.6, 'rgba(205,212,220,.4)'); fog.addColorStop(1, 'rgba(205,212,220,0)');
       ctx.fillStyle = fog; ctx.fillRect(0, 0, W, H * .55);
     }
-    if (sky.weather === 'rain') {
+    if (skyNow.weather === 'rain') {
       const t = reduced ? 400 : performance.now();
-      ctx.strokeStyle = sky.phase === 'night' ? 'rgba(190,210,255,.42)' : 'rgba(225,235,255,.5)'; ctx.lineWidth = 1.4; ctx.beginPath();
-      for (let i = 0; i < 70; i++) {
+      ctx.strokeStyle = skyNow.phase === 'night' ? 'rgba(190,210,255,.42)' : 'rgba(225,235,255,.5)'; ctx.lineWidth = 1.4; ctx.beginPath();
+      for (let i = 0; i < (g.coat ? 28 : 70); i++) {
         const x = (hash(i) * (W + 60) + t * .09) % (W + 60) - 30;
         const y = (hash(i + 99) * (H + 60) + t * (.75 + hash(i + 7) * .4)) % (H + 60) - 30;
         ctx.moveTo(x, y); ctx.lineTo(x - 5, y + 19);
@@ -758,11 +797,27 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       ctx.stroke();
     }
   }
+  function drawShelter(c, o) {
+    c.save(); c.translate(o.x || 0, o.y || 0);
+    const w = o.icon ? 46 : o.w - 6, h = o.icon ? 36 : 58;
+    /* Tin roof on four posts, with a raincoat hanging on the sign */
+    c.fillStyle = 'rgba(0,0,0,.25)'; c.fillRect(-w / 2 + 3, -h / 2 + 4, w, h);
+    c.fillStyle = '#8fa3ad'; c.fillRect(-w / 2, -h / 2, w, h);
+    c.fillStyle = 'rgba(255,255,255,.28)'; for (let i = 1; i < 6; i++) c.fillRect(-w / 2 + i * w / 6, -h / 2, 2, h);
+    c.fillStyle = '#c21b3c'; c.fillRect(-w / 2, -h / 2, w, 5);
+    c.fillStyle = '#ffd21f'; rr(c, -10, -9, 20, 22, 5); c.fill();
+    c.fillStyle = '#b8930e'; c.beginPath(); c.arc(0, -8, 5, 0, 7); c.fill();
+    if (!o.icon) {
+      c.font = '800 12px Mukta, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.lineWidth = 3;
+      c.strokeStyle = 'rgba(9,18,56,.9)'; c.strokeText('Pati', 0, h / 2 - 8); c.fillStyle = '#fff'; c.fillText('Pati', 0, h / 2 - 8);
+    }
+    c.restore();
+  }
   function drawDust(c) {
     c.fillStyle = '#c9a97a';
     for (const p of [[-10, 4, 11], [8, 5, 12], [0, -6, 13], [-16, -4, 7], [16, -4, 8]]) { c.beginPath(); c.arc(p[0], p[1], p[2], 0, 7); c.fill(); }
   }
-  const ART = { cow: drawCow, pothole: drawPothole, tempo: drawTempo, micro: drawMicro, truck: drawTruck, dog: drawDog, dig: drawDig, momo: drawMomo, helmet: drawHelmet, bike: drawBike, cycle: drawCycle, walker: drawWalker, signal: drawSignal };
+  const ART = { cow: drawCow, pothole: drawPothole, tempo: drawTempo, micro: drawMicro, truck: drawTruck, dog: drawDog, dig: drawDig, momo: drawMomo, helmet: drawHelmet, bike: drawBike, cycle: drawCycle, walker: drawWalker, signal: drawSignal, shelter: drawShelter };
 
   const SHOULDER = { city: '#8f8a7c', hills: '#7a6a4f', lake: '#8f8a7c', himal: '#8a7c68' };
   const ROAD_TONE = { city: '#3a3c48', hills: '#3f4049', lake: '#3c3f4c', himal: '#615a50' };
@@ -917,7 +972,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       momos: 0, nears: 0, greens: 0, fines: 0, floats: [], attract, gate: startStop + 1, crashT: 0, cause: null, banner: 0, bannerI: 0, lapped: false };
   }
   const kmOf = g => g.dist / PX_PER_KM;
-  const scoreOf = g => Math.max(0, Math.floor((kmOf(g) - g.startKm) * 100) + g.momos * 25 + g.nears * 10 + g.greens * 20 - g.fines * 100);
+  const scoreOf = g => Math.max(0, Math.floor((kmOf(g) - g.startKm) * 100) + g.momos * 25 + g.nears * 10 + g.greens * 20 + (g.coats || 0) * 25 - g.fines * 100);
   const speedOf = g => speedAt(kmOf(g) - g.startKm + g.level * 9);
   function speedAt(km) { return 270 + 300 * Math.min(1, km / LAP_KM) + (km > LAP_KM ? Math.min(150, (km - LAP_KM) * 10) : 0); }
   const laneIndex = x => Math.max(0, Math.min(3, Math.round((x - laneX(0)) / LANE_W)));
@@ -930,6 +985,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     while (g.dist >= g.row.at) {
       for (const it of g.row.items) {
         if (it.t === 'dust') { g.dust = 3.5; if (!g.attract) float(g, 200, 90, 'Dhulo! Hold your line', '#ffe7b0'); continue; }
+        if (it.t === 'shelter' && (g.coat || skyAt(routeAt(Math.floor(kmOf(g) / SEG_KM) + 1).si).weather !== 'rain')) continue;
         g.objs.push(Object.assign({}, it, { y: -80 - (it.off || 0) - (g.dist - g.row.at) }));
       }
       g.row = g.road.next();
@@ -950,7 +1006,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       g.think = (g.think || 0) - dt;
       if (g.think <= 0) {
         g.think = B.every;
-        const near = g.objs.filter(o => o.t !== 'momo' && o.t !== 'helmet' && o.t !== 'signal' && o.y > py - B.look && o.y < py + 60);
+        const near = g.objs.filter(o => o.t !== 'momo' && o.t !== 'helmet' && o.t !== 'signal' && o.t !== 'shelter' && o.y > py - B.look && o.y < py + 60);
         const light = g.objs.find(o => o.t === 'signal' && !o.checked && o.y > py - B.look);
         let bestLane = 1, bestCost = 1e9;
         for (let l = 0; l < 4; l++) {
@@ -1010,7 +1066,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       if (o.t === 'micro' && o.swerve && !o.swerved && o.y > H * .2) {
         o.swerved = true;
         /* Only change lane if that lane is clear */
-        const clear = !g.objs.some(q => q !== o && q.h && q.t !== 'momo' && q.t !== 'helmet' && Math.abs(q.x - o.toX) < (q.w + o.w) / 2 + 8 && Math.abs(q.y - o.y) < (q.h + o.h) / 2 + 90);
+        const clear = !g.objs.some(q => q !== o && q.h && q.t !== 'momo' && q.t !== 'helmet' && q.t !== 'shelter' && Math.abs(q.x - o.toX) < (q.w + o.w) / 2 + 8 && Math.abs(q.y - o.y) < (q.h + o.h) / 2 + 90);
         if (clear) {
           o.blink = true; o.wait = .45; o.brake = .68;
           if (!g.attract) float(g, o.x, o.y - 56, 'Kalanki! Kalanki!', '#ffb000');
@@ -1026,7 +1082,9 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       if (g.attract || crashed || o.gone) continue;
 
       const hit = Math.abs(o.x - g.x) < (o.w * .8 + pw) / 2 && Math.abs(o.y - py) < (o.h * .82 + ph) / 2;
-      if (o.t === 'signal') {
+      if (o.t === 'shelter') {
+        if (hit) { o.gone = true; g.coat = true; g.coats = (g.coats || 0) + 1; g.slow = Math.min(g.slow, .7); sfx.helmet(); float(g, g.x, py - 44, 'Raincoat on! +25', '#ffd21f'); }
+      } else if (o.t === 'signal') {
         if (!o.checked && o.y >= py) {
           o.checked = true;
           const lane = Math.max(0, Math.min(3, Math.floor((g.x - ROAD_L) / LANE_W)));
@@ -1071,7 +1129,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     ctx.save();
     if (shake > 0) ctx.translate((hash(performance.now()) - .5) * 12 * shake * 2, (hash(performance.now() + 7) - .5) * 12 * shake * 2);
     drawScenery(g.dist);
-    const py = playerY(), order = { walker: 0, pothole: 0, momo: 1, helmet: 1, dig: 2, dog: 3, cow: 3, cycle: 3, bike: 4, tempo: 4, micro: 4, truck: 5, signal: 6 };
+    const py = playerY(), order = { shelter: 0, walker: 0, pothole: 0, momo: 1, helmet: 1, dig: 2, dog: 3, cow: 3, cycle: 3, bike: 4, tempo: 4, micro: 4, truck: 5, signal: 6 };
     /* painted gate on the road, behind traffic */
     for (let i = g.gate - 1; i <= g.gate + 1; i++) if (i > 0) drawGate(i, py - (i * SEG_KM * PX_PER_KM - g.dist));
     renderGhosts(g, py);
@@ -1080,10 +1138,10 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     for (const o of sorted) if (o.y > -180) ART[o.t](ctx, o);
     if (g.cause) {
       ctx.save(); ctx.translate(g.x, py); ctx.rotate(Math.min(1.3, g.crashT * 5)); ctx.translate(-g.x, -py);
-      drawPlayer(ctx, g.x, py, 0, false, false); ctx.restore();
+      drawPlayer(ctx, g.x, py, 0, false, false, g.coat); ctx.restore();
     } else {
       const tilt = g.wobble > 0 && !reduced ? Math.sin(g.t * 19) * .42 * Math.min(1, g.wobble) : Math.max(-.32, Math.min(.32, g.vx / 900));
-      drawPlayer(ctx, g.x, py, tilt, g.shield, g.inv > 0);
+      drawPlayer(ctx, g.x, py, tilt, g.shield, g.inv > 0, g.coat);
       const myName = !g.attract && riderName();
       if (myName) {
         ctx.font = '600 11px Mukta, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3;
@@ -1108,6 +1166,9 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       const text = freeze > .7 ? String(Math.ceil(freeze - .7)) : 'Jaau!';
       ctx.font = '400 72px "Rozha One", serif'; ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(9,18,56,.9)';
       ctx.strokeText(text, 200, H * .4); ctx.fillStyle = '#ffb000'; ctx.fillText(text, 200, H * .4);
+      const lvl = 'Level ' + (g.level + 1) + ': ' + STAGES[g.level].name;
+      ctx.font = '400 28px "Rozha One", serif'; ctx.lineWidth = 6;
+      ctx.strokeText(lvl, 200, H * .4 - 66); ctx.fillStyle = '#fff4dc'; ctx.fillText(lvl, 200, H * .4 - 66);
       if (showHint) {
         ctx.font = '800 18px Mukta, sans-serif'; ctx.lineWidth = 5;
         const hint = matchMedia('(pointer: coarse)').matches ? 'Tap or swipe to change lane' : 'Press ← → to change lane';
@@ -1140,6 +1201,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   /* Which stage a distance falls in, and how many of its stops are behind you */
   const progressAt = km => { const here = routeAt(Math.floor(km / SEG_KM) + 1); return { here, stage: here.stage, done: here.idx }; };
 
+  const clock = t => Math.floor(t / 60) + ':' + String(Math.floor(t % 60)).padStart(2, '0');
   function updateHud(g) {
     const km = kmOf(g), seg = Math.floor(km / SEG_KM);
     $('hudNext').textContent = stopName(seg + 1);
@@ -1152,6 +1214,10 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     while (track.children.length > stage.stops.length) track.lastChild.remove();
     while (track.children.length < stage.stops.length) track.appendChild(document.createElement('i'));
     Array.from(track.children).forEach((el, i) => { el.className = i < done ? 'done' : i === done ? 'now' : ''; });
+    const si = STAGES.indexOf(stage);
+    const nowTime = new Date(Date.now() + NPT_MS).toISOString().slice(11, 16);
+    $('hudSky').textContent = nowTime + ' · Riding ' + clock(g.t) + ' · ' + skyLabel(si);
+    if (seg !== g.mapSeg) { g.mapSeg = seg; drawMap(km); }
   }
 
   function drawRing(km) {
@@ -1182,32 +1248,70 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   }
 
   let startLevel = 0;
+  function pickRow(box, label, items, isOn, onPick) {
+    box.textContent = '';
+    const l = document.createElement('span'); l.textContent = label; box.appendChild(l);
+    for (const it of items) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.textContent = it.text; b.title = it.title || it.text; b.disabled = !!it.locked;
+      b.setAttribute('aria-pressed', String(isOn(it)));
+      if (!it.locked) b.addEventListener('click', () => onPick(it));
+      box.appendChild(b);
+    }
+    box.hidden = false;
+  }
   function showLevels() {
     const top = save.unlocked || 0;
+    const items = STAGES.map((st, i) => ({ i, text: 'Level ' + (i + 1), title: i > top ? st.name + ': finish the level before it to unlock' : st.name, locked: i > top }));
     for (const id of ['levelsHome', 'levelsResult']) {
-      const box = $(id);
-      box.hidden = top < 1;
-      box.textContent = '';
-      if (top < 1) continue;
-      const label = document.createElement('span'); label.textContent = 'Start from:'; box.appendChild(label);
-      for (let i = 0; i <= top; i++) {
-        const b = document.createElement('button');
-        b.type = 'button'; b.textContent = 'Level ' + (i + 1); b.title = STAGES[i].name;
-        b.setAttribute('aria-pressed', String(i === startLevel));
-        b.addEventListener('click', () => { startLevel = i; showLevels(); });
-        box.appendChild(b);
-      }
+      pickRow($(id), 'Start from:', items, it => it.i === startLevel, it => { startLevel = it.i; showLevels(); refreshSide(); });
     }
+    const skyItems = SKY_MODES.map(m => ({ key: m[0], text: m[1] }));
+    for (const id of ['skyHome', 'skyResult']) {
+      pickRow($(id), 'Weather:', skyItems, it => it.key === sky.mode, it => {
+        sky.mode = it.key;
+        try { localStorage.setItem(KEY + '.sky', it.key); } catch (e) { /* no storage */ }
+        showLevels(); refreshSide();
+      });
+    }
+  }
+  /* Route map for whichever level a distance falls in: the ring for Level 1, a road line for the others */
+  function drawMap(km) {
+    const { here, stage, done } = progressAt(km), si = here.si;
+    $('sideTitle').textContent = 'Level ' + (si + 1) + ': ' + stage.name;
+    if (si === 0) { drawRing(km); return; }
+    const svg = $('ring'), ns = 'http://www.w3.org/2000/svg', n = stage.stops.length;
+    svg.textContent = '';
+    const el = (t, a) => { const e = document.createElementNS(ns, t); for (const k in a) e.setAttribute(k, a[k]); svg.appendChild(e); return e; };
+    const pos = i => ({ x: 30 + (i / (n - 1)) * 280, y: 145 + Math.sin(i * 1.25) * 62 });
+    let line = '', doneLine = '';
+    stage.stops.forEach((st, i) => {
+      const p = pos(i); line += (i ? ' L' : 'M') + p.x + ' ' + p.y;
+      if (i <= done) doneLine += (i ? ' L' : 'M') + p.x + ' ' + p.y;
+    });
+    el('path', { d: line, fill: 'none', stroke: 'rgba(255,244,220,.2)', 'stroke-width': 8, 'stroke-linejoin': 'round' });
+    if (done > 0) el('path', { d: doneLine, fill: 'none', stroke: '#ffb000', 'stroke-width': 8, 'stroke-linejoin': 'round' });
+    stage.stops.forEach((st, i) => {
+      const p = pos(i), reached = i < done;
+      el('circle', { cx: p.x, cy: p.y, r: i === done ? 6 : 4, fill: reached ? '#ffb000' : '#0d1a4a', stroke: i === done ? '#dc143c' : '#fff4dc', 'stroke-width': 2 });
+      const t = el('text', { x: p.x, y: p.y + (i % 2 ? 22 : -14), 'text-anchor': i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle' });
+      if (reached) t.setAttribute('class', 'reached');
+      t.textContent = st[0];
+    });
+    const sum = el('text', { x: 170, y: 268, 'text-anchor': 'middle', class: 'small' });
+    sum.textContent = (stage.stops.length * SEG_KM).toFixed(1) + ' km, stop ' + Math.min(done + 1, n) + ' of ' + n;
   }
   function refreshSide() {
     const best = save.best;
     const road = save.day - LAUNCH + 1;
-    $('sideTitle').textContent = 'Road #' + road + ' · ' + dayLabel(save.day);
-    $('homeKicker').textContent = 'Road #' + road + ' · ' + dayLabel(save.day) + (save.tries ? ' · Best ' + (best ? best.score.toLocaleString('en-US') : 0) : '') + ' · ' + skyLabel();
+    $('homeKicker').textContent = 'Road #' + road + ' · ' + dayLabel(save.day) + (save.tries ? ' · Best ' + (best ? best.score.toLocaleString('en-US') : 0) : '');
+    $('skyNow').textContent = skyLabel(startLevel);
     $('sideBest').textContent = best ? best.score.toLocaleString('en-US') : '0';
     $('sideTries').textContent = save.tries;
     $('sideStreak').textContent = save.streak;
-    drawRing(best ? best.km : 0);
+    /* Show the chosen level, with progress if today's best ride got into it */
+    const levelKm = LEVEL_STOP[startLevel] * SEG_KM, levelEnd = levelKm + STAGES[startLevel].stops.length * SEG_KM;
+    drawMap(mode === 'play' && G ? kmOf(G) : best && best.km >= levelKm && best.km < levelEnd ? best.km : levelKm);
   }
 
   function fillCells(container, km) {
@@ -1255,7 +1359,6 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     sendEvent('start');
     /* First ride of the day is the same road for everyone; each retry shuffles the traffic */
     G = newGame((seedFor(day) ^ Math.imul(save.tries - 1, 0x9e3779b1) ^ Math.imul(startLevel, 0x85ebca6b)) >>> 0, false, startLevel);
-    if (startLevel > 0) { G.banner = 0; float(G, 200, H * .32, 'Level ' + (startLevel + 1) + ': ' + STAGES[startLevel].name, '#ffb000'); }
     const me = API ? getPlayerId().slice(0, 4) : '';
     /* At most 3 recordings, only real rides, never the player's own */
     G.ghosts = ghostList.filter(gh => gh.id !== me && gh.km >= 2).slice(0, 3).map(gh => ({ id: gh.id, path: gh.path, label: gh.name || 'Rider ' + gh.id }));
@@ -1310,10 +1413,12 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     $('resCause').textContent = CAUSES[g.cause][0];
     $('resCauseEn').textContent = CAUSES[g.cause][1];
     fillCells($('resCells'), km);
-    $('resRoute').textContent = routeText(km, g.level);
+    $('resRoute').textContent = routeText(km, g.level) + ' · Rode for ' + clock(g.t);
     /* Next ride starts from the level you reached, or pick an earlier one */
     startLevel = Math.min(save.unlocked || 0, progressAt(km).here.si);
     showLevels();
+    refreshSide();
+    drawMap(km);
     $('resScore').textContent = score.toLocaleString('en-US');
     $('resBest').textContent = save.best.score.toLocaleString('en-US');
     $('resMomo').textContent = g.momos;
@@ -1406,11 +1511,11 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     cow: [drawCow, { w: 60, h: 34 }, .9], micro: [drawMicro, { w: 52, h: 90 }, .62], tempo: [drawTempo, {}, .9],
     truck: [drawTruck, {}, .36], dog: [drawDog, { dogV: 1 }, 1.2], dig: [drawDig, { w: 78, h: 34 }, .7],
     bike: [drawBike, {}, 1.3], cycle: [drawCycle, {}, 1.3], walker: [drawWalker, { icon: true }, 1.6], signal: [drawSignal, { icon: true }, .9],
-    pothole: [drawPothole, {}, 1], dust: [drawDust, {}, 1], momo: [drawMomo, {}, 1.5], helmet: [drawHelmet, {}, 1.4]
+    shelter: [drawShelter, { icon: true }, .8], pothole: [drawPothole, {}, 1], dust: [drawDust, {}, 1], momo: [drawMomo, {}, 1.5], helmet: [drawHelmet, {}, 1.4]
   };
   const RULES = {
     en: {
-      goalT: 'Your goal', goal: 'Ride as far as you can. Your scooter moves by itself and gets faster, so you only steer. Level 1 is the 27 km Ring Road. Finish it and Level 2 starts: Prithvi Highway, then Pokhara, then the mountain road to Muktinath. After a crash you can restart from any level you have reached.',
+      goalT: 'Your goal', goal: 'Ride as far as you can. Your scooter moves by itself and gets faster, so you only steer. Level 1 is the 27 km Ring Road. Finish it and Level 2 starts: Prithvi Highway, then Pokhara, then the mountain road to Muktinath. After a crash you can restart from any level you have reached. The weather is live for each place, and you can pick your own look.',
       steerT: 'How to steer', steer: 'The road has 4 lanes. On a phone, tap the left or right side of the screen, or swipe, to move one lane. On a computer, press ← → or A and D. Press P to pause.',
       ghostT: 'Other riders', ghost: "Anyone riding right now is listed at the top of the road. When they are near you on the road, you see a small blue scooter with their name and a green dot. Other small scooters are recordings of today's best rides. None of them can hit you.",
       stop: 'Hit one and your ride ends', slow: 'These make it harder', help: 'These help you',
@@ -1422,13 +1527,14 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         tempo: ['Safa Tempo', 'Moves slower than you'], truck: ['Truck', 'Takes up two lanes'],
         dog: ['Kukur', 'Runs across the road'], dig: ['Dug-up road', 'Only one lane stays open'],
         pothole: ['Khaldo', 'Slows you and shakes your scooter off balance'], dust: ['Dhulo', 'Hides the road ahead for about 3 seconds'],
+        shelter: ['Pati (rain stop)', 'Only when it rains. Ride under it for a raincoat: less rain, +25 points'],
         momo: ['Momo', '+25 points'], helmet: ['Helmet', 'Saves you from one crash']
       },
       pointsT: 'Points', pts: [['100', 'for each km'], ['25', 'for each momo'], ['20', 'for each green light'], ['10', 'for each close pass']],
       dailyT: 'Every day', daily: 'Your first ride today is on the same road as everyone else. Every time you ride again, the traffic moves to new places. Your best score counts, and a new road opens at midnight, Nepal time.'
     },
     ne: {
-      goalT: 'लक्ष्य', goal: 'सकेसम्म टाढा पुग्नुहोस्। स्कुटर आफैं अगाडि बढ्छ र बिस्तारै छिटो हुन्छ, तपाईंले मोड्ने मात्र हो। लेभल १ मा २७ किमीको रिङरोड छ। यो सकेपछि लेभल २ सुरु हुन्छ: पृथ्वी राजमार्ग, त्यसपछि पोखरा, अनि मुक्तिनाथसम्मको पहाडी बाटो। दुर्घटनापछि पुगेको कुनै पनि लेभलबाट फेरि सुरु गर्न सकिन्छ।',
+      goalT: 'लक्ष्य', goal: 'सकेसम्म टाढा पुग्नुहोस्। स्कुटर आफैं अगाडि बढ्छ र बिस्तारै छिटो हुन्छ, तपाईंले मोड्ने मात्र हो। लेभल १ मा २७ किमीको रिङरोड छ। यो सकेपछि लेभल २ सुरु हुन्छ: पृथ्वी राजमार्ग, त्यसपछि पोखरा, अनि मुक्तिनाथसम्मको पहाडी बाटो। दुर्घटनापछि पुगेको कुनै पनि लेभलबाट फेरि सुरु गर्न सकिन्छ। मौसम हरेक ठाउँको साँचो हुन्छ, चाहेमा आफैं छान्न पनि सकिन्छ।',
       steerT: 'कसरी मोड्ने', steer: 'सडकमा ४ लेन छन्। फोनमा स्क्रिनको दायाँ वा बायाँ छेउमा ट्याप वा स्वाइप गर्दा एक लेन सर्छ। कम्प्युटरमा ← → वा A र D थिच्नुहोस्। रोक्न P थिच्नुहोस्।',
       ghostT: 'अरू खेलाडी', ghost: 'अहिले खेलिरहेकाहरूको नाम बाटोको माथि देखिन्छ। तपाईंको नजिक आउँदा नाम र हरियो थोप्लासहितको सानो निलो स्कुटर देखिन्छ। अरू साना स्कुटर आजका उत्कृष्ट राइडका रेकर्डिङ हुन्। कसैले ठोक्दैनन्।',
       stop: 'ठोक्किनुभयो भने खेल सकिन्छ', slow: 'यिनले गाह्रो बनाउँछन्', help: 'यिनले मद्दत गर्छन्',
@@ -1440,6 +1546,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         tempo: ['सफा टेम्पो', 'तपाईंभन्दा ढिलो चल्छ'], truck: ['ट्रक', 'दुई लेन ओगट्छ'],
         dog: ['कुकुर', 'बाटो काटेर दौडिन्छ'], dig: ['खनेको बाटो', 'एउटा लेन मात्र खुला हुन्छ'],
         pothole: ['खाल्डो', 'ढिलो बनाउँछ र स्कुटरको सन्तुलन बिगार्छ'], dust: ['धुलो', 'अगाडिको बाटो करिब ३ सेकेन्ड देखिँदैन'],
+        shelter: ['पाटी', 'पानी पर्दा मात्र देखिन्छ। मुनिबाट जाँदा रेनकोट लगाइन्छ: पानी कम, +२५ अंक'],
         momo: ['मोमो', '+२५ अंक'], helmet: ['हेल्मेट', 'एक पटक ठोक्किँदा बचाउँछ']
       },
       pointsT: 'अंक', pts: [['१००', 'प्रति किमी'], ['२५', 'प्रति मोमो'], ['२०', 'हरियो बत्तीमा'], ['१०', 'नजिकबाट जोगिँदा']],
@@ -1467,7 +1574,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     if (API) para(R.ghostT, R.ghost);
     group('stop', R.stop, ['cow', 'bike', 'micro', 'cycle', 'tempo', 'walker', 'truck', 'dog', 'dig']);
     group('slow', R.slow, ['signal', 'pothole', 'dust']);
-    group('help', R.help, ['momo', 'helmet']);
+    group('help', R.help, ['momo', 'helmet', 'shelter']);
     const pd = mk('div', 'rule-block'); pd.appendChild(mk('h3', '', R.pointsT));
     const pg = mk('div', 'points');
     for (const p of R.pts) { const c = mk('div'); c.appendChild(mk('b', '', p[0])); c.appendChild(mk('span', '', p[1])); pg.appendChild(c); }
@@ -1508,6 +1615,11 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   }
 
   /* The home screen shows a real road being ridden, warmed up so the first frame already has traffic */
+  /* Anyone whose best ride today already passed a level keeps it unlocked */
+  if (save.best && save.best.km >= STAGES[0].stops.length * SEG_KM) {
+    const reached = Math.min(STAGES.length - 1, progressAt(save.best.km).here.si);
+    if (reached > (save.unlocked || 0)) { save.unlocked = reached; persist(); }
+  }
   startLevel = save.unlocked || 0;
   showLevels();
   loadSky(); rollDay(); refreshSide(); resize();
@@ -1545,7 +1657,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       shake = 0;
       return { km: +kmOf(g).toFixed(1), cause: g.cause, score: scoreOf(g), momos: g.momos, nears: g.nears };
     },
-    setSky(phase, weather) { sky.phase = phase; sky.weather = weather; },
+    setSky(phase, weather) { sky.forced = { phase, weather }; },
     seedFor, todayNumber
   };
 })();
