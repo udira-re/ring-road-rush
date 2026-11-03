@@ -115,8 +115,8 @@ async function readLive(env) {
 // Current weather codes, fetched here so players' browsers never contact a third party.
 async function skyNow() {
   try {
-    // Kathmandu, Mugling, Pokhara, Jomsom, Birgunj and Birtamod: one for each level.
-    const url = 'https://api.open-meteo.com/v1/forecast?latitude=27.7172,27.855,28.2096,28.782,27.0104,26.6436&longitude=85.324,84.561,83.9856,83.729,84.877,87.9893&current=weather_code';
+    // Kathmandu, Mugling, Pokhara, Jomsom, Birgunj and Biratnagar: one for each level.
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=27.7172,27.855,28.2096,28.782,27.0104,26.4525&longitude=85.324,84.561,83.9856,83.729,84.877,87.2718&current=weather_code';
     const r = await fetch(url, { cf: { cacheTtl: 1200, cacheEverything: true } });
     if (!r.ok) throw new Error('weather ' + r.status);
     const d = await r.json();
