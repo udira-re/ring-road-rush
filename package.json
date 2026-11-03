@@ -1,0 +1,15 @@
+{
+  "name": "ring-road-rush",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A daily scooter game on Kathmandu's Ring Road, with a small API that counts plays.",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "dev": "npm run build && wrangler d1 migrations apply ring-road-rush --local && wrangler dev",
+    "db:remote": "wrangler d1 migrations apply ring-road-rush --remote",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

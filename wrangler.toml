@@ -1,0 +1,14 @@
+name = "ring-road-rush"
+main = "src/worker.js"
+compatibility_date = "2026-01-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "ring-road-rush"
+database_id = "d84cf57c-8e30-4914-ab14-3930930c432a"
+migrations_dir = "migrations"
