@@ -41,7 +41,7 @@ npm run deploy
 
 ## Day, night and weather
 
-The road's look follows Nepal time and the current Kathmandu weather from Open-Meteo, fetched by the Worker. It changes the look only, not the traffic or scoring.
+The road's look follows Nepal time and the current weather for each level's place from Open-Meteo, fetched by the Worker. Riders can also pick a look. It changes the look only, not the traffic or scoring.
 
 ## API
 
