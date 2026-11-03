@@ -25,6 +25,8 @@ Then open http://localhost:8787. Stats are at `/stats.html`.
 
 ## Deploy
 
+Every push to `main` deploys automatically through Cloudflare Workers Builds. Database changes in `migrations/` are not automatic, so run them first with `npm run db:remote`. To set up a new copy:
+
 ```
 npx wrangler login
 npx wrangler d1 create ring-road-rush
@@ -54,6 +56,8 @@ The road's look follows Nepal time and the current Kathmandu weather from Open-M
 `POST /api/ghosts` saves a rider's best ride of the day, and `GET /api/ghosts` returns today's top 6 to replay as ghost scooters.
 
 `POST /api/live` updates a rider's position every 4 seconds and returns who is riding now. `GET /api/live` returns the same list.
+
+`GET /api/leaderboard` returns the top riders for today and the last 7 days.
 
 `GET /api/players` returns each rider's rides, best score and last played time, plus the latest 50 rides.
 
