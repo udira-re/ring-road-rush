@@ -1,0 +1,179 @@
+// Ring Road Rush API. Static files in /public are served by Cloudflare directly;
+// only /api/* reaches this code.
+const NPT_MS = 20700000; // Nepal is UTC+5:45
+const DAY_MS = 86400000;
+const CAUSES = new Set(['cow', 'micro', 'tempo', 'truck', 'dog', 'dig', 'bike', 'cycle', 'walker']);
+const DEVICES = new Set(['phone', 'computer']);
+const ID_PATTERN = /^[A-Za-z0-9-]{8,64}$/;
+
+const nepalDay = (now = Date.now()) => Math.floor((now + NPT_MS) / DAY_MS);
+const json = (data, status = 200, headers = {}) =>
+  new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...headers } });
+const inRange = (v, min, max) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max;
+
+export function validate(body) {
+  if (!body || typeof body !== 'object') return 'Send a JSON object.';
+  if (typeof body.player !== 'string' || !ID_PATTERN.test(body.player)) return 'player must be a random ID.';
+  if (body.type !== 'start' && body.type !== 'end') return 'type must be start or end.';
+  if (!Number.isInteger(body.road) || body.road < 1 || body.road > 100000) return 'road must be a road number.';
+  if (!DEVICES.has(body.device)) return 'device must be phone or computer.';
+  if (body.name !== undefined && (typeof body.name !== 'string' || body.name.length > 24)) return 'name must be 24 characters or fewer.';
+  if (body.type === 'end') {
+    if (!inRange(body.km, 0, 500)) return 'km is out of range.';
+    if (!Number.isInteger(body.score) || !inRange(body.score, 0, 1000000)) return 'score is out of range.';
+    if (!Number.isInteger(body.momos) || !inRange(body.momos, 0, 20000)) return 'momos is out of range.';
+    if (!CAUSES.has(body.cause)) return 'cause is not a known crash type.';
+  }
+  return null;
+}
+
+async function saveEvent(request, env) {
+  let body;
+  try { body = await request.json(); } catch { return json({ error: 'Send valid JSON.' }, 400); }
+  const problem = validate(body);
+  if (problem) return json({ error: problem }, 422);
+  const end = body.type === 'end';
+  const name = typeof body.name === 'string' ? body.name.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '';
+  await env.DB.prepare(
+    `INSERT INTO events (player_id, type, day, road, device, km, score, momos, cause, created_at, name)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).bind(body.player, body.type, nepalDay(), body.road, body.device,
+    end ? body.km : null, end ? body.score : null, end ? body.momos : null, end ? body.cause : null, Date.now(), name || null).run();
+  return json({ ok: true }, 201);
+}
+
+async function stats(env) {
+  const today = nepalDay();
+  const totalsQ = `SELECT COUNT(DISTINCT player_id) AS players, COUNT(*) AS plays FROM events WHERE type = 'start'`;
+  const [totals, todayRow, returning, lengths, causes, devices, days] = await env.DB.batch([
+    env.DB.prepare(totalsQ),
+    env.DB.prepare(totalsQ + ' AND day = ?').bind(today),
+    env.DB.prepare(`SELECT COUNT(*) AS players FROM (
+      SELECT player_id FROM events WHERE type = 'start' GROUP BY player_id HAVING COUNT(DISTINCT day) > 1)`),
+    env.DB.prepare(`SELECT ROUND(AVG(km), 1) AS avg_km, MAX(score) AS top_score, COUNT(*) AS finished,
+      SUM(CASE WHEN km >= 27 THEN 1 ELSE 0 END) AS laps FROM events WHERE type = 'end'`),
+    env.DB.prepare(`SELECT cause, COUNT(*) AS rides FROM events WHERE type = 'end' GROUP BY cause ORDER BY rides DESC`),
+    env.DB.prepare(`SELECT device, COUNT(DISTINCT player_id) AS players FROM events WHERE type = 'start' GROUP BY device ORDER BY players DESC`),
+    env.DB.prepare(`SELECT day, COUNT(DISTINCT player_id) AS players, COUNT(*) AS plays FROM events
+      WHERE type = 'start' AND day > ? GROUP BY day ORDER BY day`).bind(today - 14)
+  ]);
+  const first = r => r.results[0] || {};
+  const dayRows = new Map(days.results.map(d => [d.day, d]));
+  const last14 = [];
+  for (let d = today - 13; d <= today; d++) {
+    const row = dayRows.get(d) || { players: 0, plays: 0 };
+    last14.push({ date: new Date(d * DAY_MS).toISOString().slice(0, 10), players: row.players, plays: row.plays });
+  }
+  return json({
+    all_time: first(totals), today: first(todayRow), returning_players: first(returning).players || 0,
+    rides: { finished: first(lengths).finished || 0, average_km: first(lengths).avg_km || 0, top_score: first(lengths).top_score || 0, full_laps: first(lengths).laps || 0 },
+    crashes: causes.results, devices: devices.results, last_14_days: last14
+  }, 200, { 'Cache-Control': 'public, max-age=30' });
+}
+
+// Current Kathmandu weather code, fetched here so players' browsers never contact a third party.
+async function skyNow() {
+  try {
+    const url = 'https://api.open-meteo.com/v1/forecast?latitude=27.7172&longitude=85.324&current=weather_code';
+    const r = await fetch(url, { cf: { cacheTtl: 1200, cacheEverything: true } });
+    if (!r.ok) throw new Error('weather ' + r.status);
+    const d = await r.json();
+    return json({ code: d.current.weather_code }, 200, { 'Cache-Control': 'public, max-age=600' });
+  } catch {
+    return json({ code: null });
+  }
+}
+
+// Ghost riders: each player's best ride of the day, replayed by other players.
+const LAUNCH_DAY = Date.UTC(2026, 10, 2) / DAY_MS;
+function validGhost(b) {
+  if (!b || typeof b !== 'object') return 'Send a JSON object.';
+  if (typeof b.player !== 'string' || !ID_PATTERN.test(b.player)) return 'player must be a random ID.';
+  if (b.road !== nepalDay() - LAUNCH_DAY + 1) return "This ride is not from today's road.";
+  if (!inRange(b.km, 0, 500)) return 'km is out of range.';
+  if (!Number.isInteger(b.score) || !inRange(b.score, 0, 1000000)) return 'score is out of range.';
+  if (b.name !== undefined && (typeof b.name !== 'string' || b.name.length > 24)) return 'name must be 24 characters or fewer.';
+  const p = b.path;
+  if (!Array.isArray(p) || p.length < 8 || p.length > 3000 || p.length % 2) return 'path has the wrong length.';
+  for (let i = 0; i < p.length; i++) {
+    if (!Number.isInteger(p[i]) || p[i] < 0 || p[i] > (i % 2 ? 400 : 1000000)) return 'path has a value out of range.';
+  }
+  return null;
+}
+async function saveGhost(request, env) {
+  let b;
+  try { b = await request.json(); } catch { return json({ error: 'Send valid JSON.' }, 400); }
+  const problem = validGhost(b);
+  if (problem) return json({ error: problem }, 422);
+  const name = typeof b.name === 'string' ? b.name.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '';
+  await env.DB.prepare(
+    `INSERT INTO ghosts (player_id, day, name, km, score, path, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (player_id, day) DO UPDATE SET
+       name = COALESCE(excluded.name, ghosts.name),
+       km = CASE WHEN excluded.score > ghosts.score THEN excluded.km ELSE ghosts.km END,
+       path = CASE WHEN excluded.score > ghosts.score THEN excluded.path ELSE ghosts.path END,
+       created_at = CASE WHEN excluded.score > ghosts.score THEN excluded.created_at ELSE ghosts.created_at END,
+       score = MAX(excluded.score, ghosts.score)`
+  ).bind(b.player, nepalDay(), name || null, b.km, b.score, JSON.stringify(b.path), Date.now()).run();
+  return json({ ok: true }, 201);
+}
+async function ghosts(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT substr(player_id, 1, 4) AS id, name, km, score, path FROM ghosts WHERE day = ? ORDER BY km DESC LIMIT 6`
+  ).bind(nepalDay()).all();
+  return json({ ghosts: results.map(g => ({ ...g, path: JSON.parse(g.path) })) });
+}
+
+// Player list for the stats page. Only a short ID leaves the server, never the full one.
+async function players(env) {
+  const [list, recent] = await env.DB.batch([
+    env.DB.prepare(`SELECT
+        substr(e.player_id, 1, 4) AS id,
+        (SELECT n.name FROM events n WHERE n.player_id = e.player_id AND n.name IS NOT NULL ORDER BY n.id DESC LIMIT 1) AS name,
+        SUM(CASE WHEN e.type = 'start' THEN 1 ELSE 0 END) AS rides,
+        COUNT(DISTINCT e.day) AS days,
+        MAX(e.km) AS best_km,
+        MAX(e.score) AS best_score,
+        COALESCE(SUM(e.momos), 0) AS momos,
+        GROUP_CONCAT(DISTINCT e.device) AS devices,
+        MIN(e.created_at) AS first_seen,
+        MAX(e.created_at) AS last_seen
+      FROM events e GROUP BY e.player_id ORDER BY last_seen DESC LIMIT 200`),
+    env.DB.prepare(`SELECT
+        substr(e.player_id, 1, 4) AS id,
+        (SELECT n.name FROM events n WHERE n.player_id = e.player_id AND n.name IS NOT NULL ORDER BY n.id DESC LIMIT 1) AS name,
+        e.road, e.km, e.score, e.momos, e.cause, e.device, e.created_at
+      FROM events e WHERE e.type = 'end' ORDER BY e.id DESC LIMIT 50`)
+  ]);
+  return json({ players: list.results, recent_rides: recent.results }, 200, { 'Cache-Control': 'public, max-age=30' });
+}
+
+export default {
+  async fetch(request, env) {
+    const { pathname } = new URL(request.url);
+    try {
+      if (pathname === '/api/events') {
+        if (request.method !== 'POST') return json({ error: 'Use POST.' }, 405, { Allow: 'POST' });
+        return await saveEvent(request, env);
+      }
+      if (pathname === '/api/stats') {
+        if (request.method !== 'GET') return json({ error: 'Use GET.' }, 405, { Allow: 'GET' });
+        return await stats(env);
+      }
+      if (pathname === '/api/sky') return await skyNow();
+      if (pathname === '/api/ghosts') {
+        if (request.method === 'POST') return await saveGhost(request, env);
+        if (request.method === 'GET') return await ghosts(env);
+        return json({ error: 'Use GET or POST.' }, 405, { Allow: 'GET, POST' });
+      }
+      if (pathname === '/api/players') {
+        if (request.method !== 'GET') return json({ error: 'Use GET.' }, 405, { Allow: 'GET' });
+        return await players(env);
+      }
+      return json({ error: 'Not found.' }, 404);
+    } catch (err) {
+      console.error(err);
+      return json({ error: 'The server could not finish that request.' }, 500);
+    }
+  }
+};
