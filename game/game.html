@@ -1,0 +1,1243 @@
+<title>Ring Road Rush</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mukta:wght@400;600;800&family=Rozha+One&display=swap">
+<style>
+/* Layout: a portrait road framed like a painted truck panel; on wide screens a ring map of the route sits beside it. */
+:root {
+  color-scheme: dark;
+  --navy: #0d1a4a;
+  --flag: #003893;
+  --crimson: #dc143c;
+  --marigold: #ffb000;
+  --paper: #fff4dc;
+  --muted: #b9c2e6;
+  --good: #27b277;
+  --panel: rgba(9, 18, 56, .93);
+  --display: "Rozha One", "Noto Serif Devanagari", Georgia, serif;
+  --body: "Mukta", "Noto Sans Devanagari", system-ui, sans-serif;
+}
+html, body { height: 100%; }
+body {
+  background: var(--navy);
+  color: var(--paper);
+  font: 400 16px/1.4 var(--body);
+  overflow: hidden;
+  padding-block: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  box-sizing: border-box;
+}
+* { box-sizing: border-box; }
+.app { height: 100%; display: flex; justify-content: center; gap: 32px; min-width: 0; }
+.stage {
+  position: relative; height: 100%; width: 100%; min-width: 0; overflow: hidden;
+  border: 6px solid var(--marigold);
+  border-image: repeating-linear-gradient(135deg, var(--crimson) 0 12px, var(--marigold) 12px 24px, var(--paper) 24px 30px, var(--flag) 30px 42px) 6;
+  background: #3a3c48;
+}
+canvas#game { display: block; width: 100%; height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
+
+/* In-run readout */
+.hud { position: absolute; inset: 0 0 auto; padding: 8px 10px 10px; display: grid; gap: 6px; pointer-events: none;
+  background: linear-gradient(rgba(9,18,56,.85), rgba(9,18,56,0)); }
+.hud-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.hud-next { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; }
+.hud-next b { color: var(--marigold); font-weight: 800; }
+.hud-nums { display: flex; gap: 12px; flex: none; font-size: 15px; }
+.hud-nums .score { color: var(--marigold); font-weight: 800; }
+.track { display: grid; grid-template-columns: repeat(15, 1fr); gap: 2px; }
+.track i { display: block; height: 5px; background: rgba(255,244,220,.25); }
+.track i.done { background: var(--good); }
+.track i.now { background: var(--marigold); }
+.track i.end { background: var(--crimson); }
+
+.hud-chip { justify-self: start; background: var(--marigold); color: var(--navy); font-size: 13px; font-weight: 800; padding: 0 8px; border-radius: 3px; }
+.corner { position: absolute; z-index: 3; background: var(--panel); color: var(--paper); border: 1px solid var(--muted);
+  font: 600 13px var(--body); padding: 6px 10px; border-radius: 3px; cursor: pointer; }
+.mute { right: 10px; top: 10px; }
+.pauseb { right: 10px; bottom: 10px; display: none; }
+.stage.playing .mute { top: auto; right: auto; left: 10px; bottom: 10px; }
+.stage.playing .pauseb { display: block; }
+
+/* Rules, pause and result sheets */
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 100%; overflow-y: auto; z-index: 2;
+  background: var(--panel); padding: 18px; display: grid; gap: 12px; border-top: 4px solid var(--crimson); }
+.sheet.rules { top: 0; display: flex; flex-direction: column; gap: 0; padding: 0; overflow: hidden; border-top: 0; background: var(--navy); }
+.rules-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 12px 16px 16px; display: grid; gap: 14px; align-content: start; }
+.rules-foot { padding: 12px 16px 16px; border-top: 4px solid var(--crimson); display: grid; gap: 6px; }
+.name-row { display: grid; gap: 2px; font-size: 13px; color: var(--muted); }
+.name-row input { width: 100%; background: transparent; color: var(--paper); border: 1px solid var(--muted); border-radius: 3px; font: 400 16px var(--body); padding: 6px 8px; }
+.rules-foot .note { min-height: 0; font-size: 13px; text-align: center; }
+.lang { display: flex; gap: 0; padding: 10px 96px 8px 16px; flex: none; }
+.lang button { appearance: none; background: transparent; color: var(--paper); border: 1px solid var(--muted); font: 600 14px var(--body); padding: 4px 12px; cursor: pointer; }
+.lang button + button { border-left: 0; }
+.lang button[aria-pressed="true"] { background: var(--paper); color: var(--navy); }
+.rule-block { display: grid; gap: 6px; }
+.rule-block h3 { margin: 0; font-size: 14px; font-weight: 800; color: var(--marigold); }
+.rule-block p { font-size: 15px; line-height: 1.35; max-width: 56ch; }
+.tag { justify-self: start; margin: 0; padding: 1px 8px; border-radius: 3px; font-size: 14px; font-weight: 800; }
+.tag.stop { background: var(--crimson); color: #fff; }
+.tag.slow { background: var(--marigold); color: var(--navy); }
+.tag.help { background: var(--good); color: var(--navy); }
+.points { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-variant-numeric: tabular-nums; }
+.points b { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; color: var(--marigold); }
+.points span { display: block; font-size: 13px; line-height: 1.2; color: var(--muted); }
+.link { appearance: none; background: none; border: 0; padding: 2px 0; color: var(--paper); font: 600 14px var(--body); text-decoration: underline; cursor: pointer; justify-self: start; }
+.kicker { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--marigold); font-variant-numeric: tabular-nums; }
+h1 { font: 400 clamp(32px, 10vw, 40px)/1 var(--display); margin: 0; text-wrap: balance; }
+h1 small { display: block; font-size: .5em; color: var(--marigold); margin-bottom: 2px; }
+h2 { font: 400 28px/1.12 var(--display); margin: 0; color: var(--marigold); text-wrap: balance; }
+p { margin: 0; }
+.sub { color: var(--muted); font-size: 15px; max-width: 42ch; }
+.legend { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; margin: 0; padding: 0; list-style: none; font-size: 14px; line-height: 1.2; }
+.legend li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.legend canvas { width: 34px; height: 34px; flex: none; }
+.legend b { display: block; font-weight: 800; }
+.legend span { color: var(--muted); font-size: 13px; }
+.btn { appearance: none; border: 0; cursor: pointer; font: 800 18px var(--body); padding: 11px 16px; border-radius: 3px;
+  background: var(--crimson); color: #fff; box-shadow: 4px 4px 0 var(--marigold); }
+.btn:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--marigold); }
+.btn.alt { background: var(--paper); color: var(--navy); box-shadow: 4px 4px 0 var(--flag); }
+:focus-visible { outline: 3px solid var(--paper); outline-offset: 2px; }
+.btn.alt:focus-visible { outline-color: var(--marigold); }
+.btns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-variant-numeric: tabular-nums; }
+.stats div { min-width: 0; }
+.stats b { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; }
+.stats span { font-size: 12px; color: var(--muted); }
+.cells { display: grid; grid-template-columns: repeat(15, 1fr); gap: 3px; }
+.cells i { aspect-ratio: 1; background: rgba(255,244,220,.2); }
+.cells i.done { background: var(--good); }
+.cells i.end { background: var(--crimson); }
+.note { font-size: 14px; color: var(--muted); min-height: 1.4em; }
+textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: var(--paper); border: 1px solid var(--muted); font: 13px var(--body); padding: 6px; }
+
+/* Route panel: wide screens only */
+.side { display: none; }
+.ring text { font: 600 11px var(--body); fill: var(--muted); }
+.ring text.reached { fill: var(--paper); }
+.ring .big { font: 400 30px var(--display); fill: var(--marigold); }
+.ring .small { font: 400 12px var(--body); fill: var(--muted); }
+
+@media (min-width: 880px) and (min-height: 560px) {
+  .stage { width: auto; aspect-ratio: 9 / 15.5; flex: none; max-width: 60vw; }
+  .side { display: flex; flex-direction: column; gap: 14px; width: 340px; flex: none; justify-content: center; min-width: 0; }
+  .side h3 { font: 400 24px var(--display); margin: 0; color: var(--marigold); }
+  .ring { width: 100%; height: auto; display: block; }
+  .today { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; font-variant-numeric: tabular-nums; }
+  .today b { display: block; font-size: 24px; font-weight: 800; line-height: 1.1; }
+  .today span { font-size: 13px; color: var(--muted); }
+}
+</style>
+
+<div class="app">
+  <main class="stage" id="stage">
+    <canvas id="game" aria-label="Ring Road Rush game. Tap, swipe or use the left and right arrow keys to change lane."></canvas>
+
+    <div class="hud" id="hud" hidden>
+      <div class="hud-row">
+        <div class="hud-next">Next: <b id="hudNext">Tinkune</b></div>
+        <div class="hud-nums">
+          <span id="hudKm">0.0 km</span>
+          <span id="hudMomo">🥟 0</span>
+          <span class="score" id="hudScore">0</span>
+        </div>
+      </div>
+      <div class="track" id="hudTrack"></div>
+      <div class="hud-chip" id="hudHelmet" hidden>Helmet on: one crash covered</div>
+    </div>
+
+    <section class="sheet rules" id="home">
+      <div class="lang" role="group" aria-label="Rules language">
+        <button id="langEn" type="button" aria-pressed="true">English</button>
+        <button id="langNe" type="button" aria-pressed="false">नेपाली</button>
+      </div>
+      <div class="rules-scroll">
+        <div class="kicker" id="homeKicker">Road #1</div>
+        <h1><small>रिङ रोड रस</small>Ring Road Rush</h1>
+        <div class="name-row" id="nameRow" hidden>
+          <label for="riderName">Your name on the road and rider list (optional)</label>
+          <input id="riderName" type="text" maxlength="24" autocomplete="nickname" placeholder="Leave empty to stay anonymous">
+        </div>
+        <div class="rule-block" id="rulesBody" style="gap:14px"></div>
+      </div>
+      <div class="rules-foot">
+        <button class="btn" id="startBtn" type="button">Start riding</button>
+        <p class="note" id="riders" hidden></p>
+      </div>
+    </section>
+
+    <section class="sheet" id="pauseSheet" hidden>
+      <h2>Paused</h2>
+      <p class="sub">The road waits for you. Traffic restarts when you continue.</p>
+      <div class="btns">
+        <button class="btn" id="resumeBtn" type="button">Continue</button>
+        <button class="btn alt" id="pauseRulesBtn" type="button">Read the rules</button>
+      </div>
+    </section>
+
+    <section class="sheet" id="result" hidden>
+      <div class="kicker" id="resKicker">Road #1 · Try 1</div>
+      <h2 id="resCause">Gai le bato chhodena</h2>
+      <p class="sub" id="resCauseEn">The cow did not move. It never moves.</p>
+      <div class="cells" id="resCells"></div>
+      <p id="resRoute"></p>
+      <div class="stats">
+        <div><b id="resScore">0</b><span>Score</span></div>
+        <div><b id="resBest">0</b><span>Today's best</span></div>
+        <div><b id="resMomo">0</b><span>Momos</span></div>
+        <div><b id="resStreak">1</b><span>Day streak</span></div>
+      </div>
+      <div class="btns">
+        <button class="btn" id="retryBtn" type="button">Ride again</button>
+        <button class="btn alt" id="copyBtn" type="button">Copy best run</button>
+      </div>
+      <p class="note" id="copyNote" role="status">Paste it in your group chat and see who gets furthest.</p>
+      <textarea id="fallback" hidden readonly aria-label="Your result to copy"></textarea>
+      <button class="link" id="resRulesBtn" type="button">Read the rules</button>
+    </section>
+
+    <button class="corner mute" id="muteBtn" type="button" aria-pressed="false">Sound on</button>
+    <button class="corner pauseb" id="pauseBtn" type="button">Pause</button>
+  </main>
+
+  <aside class="side" aria-label="Today's route">
+    <h3 id="sideTitle">Road #1</h3>
+    <svg class="ring" id="ring" viewBox="0 0 340 290" role="img" aria-label="Ring Road stops, with your best progress today"></svg>
+    <div class="today">
+      <div><b id="sideBest">0</b><span>Best today</span></div>
+      <div><b id="sideTries">0</b><span>Tries today</span></div>
+      <div><b id="sideStreak">0</b><span>Day streak</span></div>
+    </div>
+    <p class="sub">Change lane with the ← → keys, or by tapping or swiping. Press P to pause.</p>
+  </aside>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  /* ---------- Route ---------- */
+  const STOPS = [
+    ['Koteshwor', 'कोटेश्वर'], ['Tinkune', 'तीनकुने'], ['Gaushala', 'गौशाला'], ['Chabahil', 'चाबहिल'],
+    ['Sukedhara', 'सुकेधारा'], ['Dhumbarahi', 'धुम्बाराही'], ['Maharajgunj', 'महाराजगञ्ज'], ['Samakhusi', 'समाखुसी'],
+    ['Balaju', 'बालाजु'], ['Swayambhu', 'स्वयम्भू'], ['Kalanki', 'कलङ्की'], ['Balkhu', 'बल्खु'],
+    ['Ekantakuna', 'एकान्तकुना'], ['Satdobato', 'सातदोबाटो'], ['Gwarko', 'ग्वार्को']
+  ];
+  const SEGS = STOPS.length, LAP_KM = 27, SEG_KM = LAP_KM / SEGS, PX_PER_KM = 3333;
+  const stopName = i => STOPS[i % SEGS][0];
+
+  const CAUSES = {
+    cow: ['Gai le bato chhodena', 'The cow did not move. It never moves.'],
+    micro: ['Microbus rokiyo, tapai rokinu bhayena', 'The microbus stopped for a passenger. You did not.'],
+    tempo: ['Safa Tempo ma thokkiyo', 'You lost to a three-wheeler.'],
+    truck: ['Horn Please lekheko thiyo', 'The truck did ask you to honk.'],
+    dog: ['Kukur le jityo', 'A street dog had right of way.'],
+    dig: ['Bato feri khaneko rahecha', 'The road was dug up again. Probably pipes.'],
+    bike: ['Bike le side kaatyo', 'A bike cut in from nowhere.'],
+    cycle: ['Cycle sanga pani haariyo', 'You lost to a cycle carrying saag.'],
+    walker: ['Zebra crossing ma manchhe thiyo', 'Someone was crossing the road. That one is on you.']
+  };
+
+  /* ---------- Daily road: Nepal time is UTC+5:45 ---------- */
+  const NPT_MS = 20700000, DAY_MS = 864e5, LAUNCH = Date.UTC(2026, 10, 2) / DAY_MS;
+  const todayNumber = () => Math.floor((Date.now() + NPT_MS) / DAY_MS);
+  const seedFor = day => (Math.imul(day, 2654435761) ^ 0x5bd1e995) >>> 0;
+  const dayLabel = day => new Date(day * DAY_MS).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  /* ---------- Saved progress: a convenience for this browser only ---------- */
+  const KEY = 'ring-road-rush.v1';
+  let save = { day: 0, best: null, tries: 0, streak: 0, lastDay: 0 };
+  try { const raw = localStorage.getItem(KEY); if (raw) save = Object.assign(save, JSON.parse(raw)); } catch (e) { /* no storage */ }
+  function persist() { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch (e) { /* no storage */ } }
+  function rollDay() { const d = todayNumber(); if (save.day !== d) { save.day = d; save.best = null; save.tries = 0; } return d; }
+
+  /* ---------- Sky: real Nepal time and Kathmandu weather. Looks only, no effect on the road or scoring. ---------- */
+  const sky = { phase: 'day', weather: 'clear' };
+  function nepalPhase() {
+    const h = new Date(Date.now() + NPT_MS).getUTCHours();
+    return h >= 5 && h < 7 ? 'dawn' : h >= 7 && h < 17 ? 'day' : h >= 17 && h < 19 ? 'dusk' : 'night';
+  }
+  function weatherFromCode(c) {
+    if (typeof c !== 'number') return 'clear';
+    if ((c >= 51 && c <= 67) || (c >= 71 && c <= 86) || c >= 95) return 'rain';
+    if (c === 45 || c === 48) return 'fog';
+    return c === 3 ? 'cloudy' : 'clear';
+  }
+  const SKY_WORDS = { dawn: 'Dawn', day: 'Daytime', dusk: 'Evening', night: 'Night', rain: 'rain', fog: 'fog', cloudy: 'cloudy', clear: 'clear' };
+  const skyLabel = () => SKY_WORDS[sky.phase] + ', ' + SKY_WORDS[sky.weather];
+  function loadSky() {
+    sky.phase = nepalPhase();
+    if (!API) return;
+    fetch(API + '/sky').then(r => r.ok ? r.json() : null).then(d => {
+      if (d) { sky.weather = weatherFromCode(d.code); refreshSide(); }
+    }).catch(() => {});
+  }
+
+  /* ---------- Ghost riders: recordings of today's rides, replayed on the same road ---------- */
+  const GHOST_STEP = .25, GHOST_COLORS = ['#ffb000', '#27d17f', '#6fb7ff', '#ff8ad0', '#ffffff', '#ff8a4d'];
+  let ghostList = [];
+  function loadGhosts() {
+    if (!API) return;
+    fetch(API + '/ghosts', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => {
+      if (d && Array.isArray(d.ghosts)) ghostList = d.ghosts;
+    }).catch(() => {});
+  }
+  function sendGhost(g, km, score) {
+    if (!API || km < .3 || g.path.length < 8) return;
+    fetch(API + '/ghosts', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+      body: JSON.stringify({ player: getPlayerId(), road: save.day - LAUNCH + 1, name: riderName() || undefined, km: +km.toFixed(2), score, path: g.path })
+    }).then(loadGhosts).catch(() => {});
+  }
+
+  /* ---------- Play counting: only runs where the hosted version sets window.RRR_API ---------- */
+  const API = window.RRR_API || null;
+  let playerId = null;
+  function getPlayerId() {
+    if (playerId) return playerId;
+    const k = KEY + '.player';
+    try { playerId = localStorage.getItem(k); } catch (e) { /* no storage */ }
+    if (!playerId) {
+      playerId = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + String(Date.now()));
+      try { localStorage.setItem(k, playerId); } catch (e) { /* no storage */ }
+    }
+    return playerId;
+  }
+  function riderName() {
+    const el = document.getElementById('riderName');
+    return el ? el.value.trim().slice(0, 24) : '';
+  }
+  function sendEvent(type, run) {
+    if (!API) return;
+    const body = JSON.stringify(Object.assign({
+      player: getPlayerId(), type, road: save.day - LAUNCH + 1, name: riderName() || undefined,
+      device: matchMedia('(pointer: coarse)').matches ? 'phone' : 'computer'
+    }, run || {}));
+    try {
+      const sent = navigator.sendBeacon && navigator.sendBeacon(API + '/events', new Blob([body], { type: 'application/json' }));
+      if (!sent) fetch(API + '/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+    } catch (e) { /* counting must never stop the game */ }
+  }
+
+  /* ---------- World constants ---------- */
+  const W = 400, ROAD_L = 44, ROAD_R = 356, LANE_W = (ROAD_R - ROAD_L) / 4;
+  const laneX = l => ROAD_L + LANE_W * (l + .5);
+  let H = 700, scale = 1, dpr = 1;
+  const playerY = () => H - 110;
+
+  /* ---------- Road generator: spawns by distance, so the same seed always gives the same road ---------- */
+  function makeRoad(seed) {
+    const rng = mulberry32(seed);
+    let at = 650, idx = 0, sinceHelmet = 0, sinceDig = 9, sinceDust = 0, sinceSignal = 3;
+    const pick = list => list[Math.floor(rng() * list.length)];
+    const shuffled = () => { const a = [0, 1, 2, 3]; for (let i = 3; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+    function hazard(type, lane) {
+      switch (type) {
+        case 'pothole': return { t: 'pothole', x: laneX(lane) + (rng() - .5) * 20, w: 46, h: 30, rate: 1, soft: true };
+        case 'cow': { const dir = lane < 2 ? 1 : -1; return { t: 'cow', x: laneX(lane), w: 60, h: 34, rate: 1, vx: dir * (8 + rng() * 14) }; }
+        case 'tempo': return { t: 'tempo', x: laneX(lane), w: 40, h: 58, rate: .72 };
+        case 'micro': {
+          const d = Math.min(1, at / PX_PER_KM / LAP_KM);
+          const swerve = rng() < .35 + d * .3;
+          const target = lane === 0 ? 1 : lane === 3 ? 2 : lane + (rng() < .5 ? -1 : 1);
+          return { t: 'micro', x: laneX(lane), w: 52, h: 90, rate: .8, swerve, toX: laneX(target) };
+        }
+        case 'bike': return { t: 'bike', x: laneX(lane), bx: laneX(lane), w: 22, h: 46, rate: .86, weave: 26, wl: 58 + rng() * 30, ph: rng() * 6.28 };
+        case 'cycle': return { t: 'cycle', x: laneX(lane), bx: laneX(lane), w: 20, h: 44, rate: .72, weave: 7, wl: 26, ph: rng() * 6.28 };
+        default: return null;
+      }
+    }
+
+    return {
+      get at() { return at; },
+      next() {
+        const km = at / PX_PER_KM, d = Math.min(1, km / LAP_KM);
+        const weights = [
+          ['pothole', 2], ['cow', 2], ['tempo', km > .5 ? 2 : 0], ['micro', km > 2 ? 2 + d * 2 : 0],
+          ['truck', km > 5 ? 1 + d : 0], ['dog', km > 3 ? 1 : 0],
+          ['bike', km > 1 ? 2 + d : 0], ['cycle', km > .3 ? 1.5 : 0], ['walker', km > 2 ? .7 : 0], ['signal', km > 2.5 && sinceSignal > 6 ? 2 : 0], ['dig', km > 6 && sinceDig > 4 ? 1 + d * 1.5 : 0],
+          ['double', km > 4 ? 1 + d * 2 : 0], ['dust', km > 8 && sinceDust > 10 ? .6 : 0]
+        ];
+        let total = 0; for (const w of weights) total += w[1];
+        let roll = rng() * total, kind = 'pothole';
+        for (const w of weights) { roll -= w[1]; if (roll <= 0 && w[1] > 0) { kind = w[0]; break; } }
+
+        const lanes = shuffled(), items = [];
+        let extra = 0;
+        if (kind === 'dig') {
+          extra = 160; sinceDig = 0;
+          for (let i = 0; i < 3; i++) items.push({ t: 'dig', x: laneX(lanes[i]), w: LANE_W, h: 34, rate: 1 });
+        } else if (kind === 'truck') {
+          const left = Math.floor(rng() * 3);
+          items.push({ t: 'truck', x: ROAD_L + LANE_W * (left + 1), w: 124, h: 150, rate: .84 });
+        } else if (kind === 'dog') {
+          const fromLeft = rng() < .5;
+          items.push({ t: 'dog', x: fromLeft ? ROAD_L - 20 : ROAD_R + 20, w: 34, h: 18, rate: 1, dogV: fromLeft ? 125 : -125 });
+        } else if (kind === 'walker') {
+          const fromLeft = rng() < .5;
+          items.push({ t: 'walker', x: fromLeft ? ROAD_L - 14 : ROAD_R + 14, w: 22, h: 22, rate: 1, walkV: fromLeft ? 85 : -85 });
+        } else if (kind === 'signal') {
+          /* Lights show which lanes are clear. Two green lanes early on, one later. */
+          extra = 120; sinceSignal = 0;
+          const greens = d < .45 ? [lanes[3], lanes[2]] : [lanes[3]];
+          items.push({ t: 'signal', x: 200, w: 0, h: 0, rate: 1, greens });
+        } else if (kind === 'double') {
+          items.push(hazard(pick(['pothole', 'cow', 'tempo', 'cycle']), lanes[0]), hazard(pick(['pothole', 'cow', 'micro', 'bike']), lanes[1]));
+        } else if (kind === 'dust') {
+          items.push({ t: 'dust', x: 0, w: 0, h: 0, rate: 1 }); sinceDust = 0;
+          items.push(hazard('pothole', lanes[0]));
+        } else {
+          items.push(hazard(kind, lanes[0]));
+        }
+
+        const free = lanes[3];
+        if (rng() < .55) {
+          const count = 3 + Math.floor(rng() * 3);
+          for (let i = 0; i < count; i++) items.push({ t: 'momo', x: laneX(free), w: 28, h: 24, rate: 1, off: 90 + i * 44 });
+        }
+        sinceHelmet++; sinceDig++; sinceDust++; sinceSignal++; idx++;
+        if (sinceHelmet > 12 && rng() < .3) { sinceHelmet = 0; items.push({ t: 'helmet', x: laneX(lanes[2]), w: 30, h: 30, rate: 1, off: 60 }); }
+
+        const row = { at: at + extra, kind, items };
+        at += extra + 330 + (1 - d) * 190 + rng() * 120;
+        return row;
+      }
+    };
+  }
+
+  /* ---------- Sound: created only after the rider presses a button ---------- */
+  let audio = null, muted = false;
+  function beep(freq, dur, type, vol, when) {
+    if (!audio || muted) return;
+    const t = audio.currentTime + (when || 0), o = audio.createOscillator(), g = audio.createGain();
+    o.type = type || 'square'; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol || .05, t); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
+    o.connect(g).connect(audio.destination); o.start(t); o.stop(t + dur);
+  }
+  const sfx = {
+    momo() { beep(880, .07, 'triangle', .08); beep(1320, .09, 'triangle', .07, .05); },
+    near() { beep(520, .05, 'square', .025); },
+    stop() { [523, 659, 784].forEach((f, i) => beep(f, .14, 'triangle', .07, i * .08)); },
+    bump() { beep(90, .16, 'sawtooth', .1); },
+    whistle() { beep(2300, .16, 'sine', .06); beep(2500, .3, 'sine', .06, .18); },
+    green() { beep(740, .1, 'triangle', .06); },
+    helmet() { beep(660, .12, 'square', .05); beep(990, .16, 'square', .05, .08); },
+    crash() { beep(400, .28, 'square', .07); beep(318, .4, 'square', .07, .02); beep(70, .4, 'sawtooth', .12, .05); }
+  };
+
+  /* ---------- Art ---------- */
+  const canvas = document.getElementById('game'), ctx = canvas.getContext('2d');
+  const hash = i => { const s = Math.sin(i * 12.9898 + 4.1) * 43758.5453; return s - Math.floor(s); };
+  const BUILD = ['#b5533c', '#d9a441', '#6f8fae', '#c2785c', '#8c6a5a', '#7a9a7e', '#d7c7a8', '#a24a5b'];
+  const FLAGS = ['#1f5fbf', '#f6f2e6', '#d4263a', '#1f9d5c', '#f2c230'];
+  function rr(c, x, y, w, h, r) { c.beginPath(); c.roundRect(x, y, w, h, r); }
+
+  function drawCow(c, o) {
+    c.save(); c.translate(o.x, o.y); if ((o.vx || 0) < 0) c.scale(-1, 1);
+    c.fillStyle = '#f1e8d6'; rr(c, -24, -13, 42, 26, 10); c.fill();
+    c.fillStyle = '#6d4b35'; rr(c, -14, -13, 16, 13, 5); c.fill(); rr(c, -4, 3, 13, 10, 4); c.fill();
+    c.fillStyle = '#e7dcc6'; rr(c, 14, -10, 18, 20, 7); c.fill();
+    c.strokeStyle = '#3b2c20'; c.lineWidth = 2.5; c.beginPath(); c.moveTo(26, -9); c.lineTo(30, -16); c.moveTo(26, 9); c.lineTo(30, 16); c.stroke();
+    c.fillStyle = '#d4263a'; c.fillRect(13, -10, 3, 20);
+    c.restore();
+  }
+  function drawPothole(c, o) {
+    c.save(); c.translate(o.x, o.y);
+    c.fillStyle = '#8a7350'; c.beginPath(); c.ellipse(0, 0, 25, 16, 0, 0, 7); c.fill();
+    c.fillStyle = '#26262e'; c.beginPath(); c.ellipse(0, 0, 21, 12.5, 0, 0, 7); c.fill();
+    c.fillStyle = '#5d6a78'; c.beginPath(); c.ellipse(-3, 2, 12, 6, 0, 0, 7); c.fill();
+    c.restore();
+  }
+  function drawTempo(c, o) {
+    c.save(); c.translate(o.x, o.y);
+    c.fillStyle = '#17181f'; c.fillRect(-20, 12, 5, 14); c.fillRect(15, 12, 5, 14); c.fillRect(-3, -30, 6, 10);
+    c.fillStyle = '#f2f4ee'; c.beginPath(); c.moveTo(0, -28); c.quadraticCurveTo(19, -20, 19, 2); c.lineTo(19, 28); c.lineTo(-19, 28); c.lineTo(-19, 2); c.quadraticCurveTo(-19, -20, 0, -28); c.fill();
+    c.fillStyle = '#1f9d5c'; c.fillRect(-19, 6, 38, 7);
+    c.fillStyle = '#9fc6d8'; c.beginPath(); c.moveTo(-11, -9); c.quadraticCurveTo(0, -17, 11, -9); c.lineTo(11, -2); c.lineTo(-11, -2); c.fill();
+    c.restore();
+  }
+  function drawMicro(c, o) {
+    c.save(); c.translate(o.x, o.y);
+    c.fillStyle = '#f0f2f6'; rr(c, -26, -45, 52, 90, 8); c.fill();
+    c.fillStyle = '#1f5fbf'; c.fillRect(-26, -8, 52, 16);
+    c.fillStyle = '#8fb6cc'; rr(c, -21, 28, 42, 12, 3); c.fill(); rr(c, -21, -40, 42, 10, 3); c.fill();
+    c.fillStyle = '#7b8496'; c.fillRect(-17, -24, 34, 3); c.fillRect(-17, 15, 34, 3);
+    if (o.blink && Math.floor(performance.now() / 110) % 2) { c.fillStyle = '#ffb000'; const s = o.toX < o.x ? -1 : 1; c.fillRect(s * 26 - 4, 34, 8, 9); c.fillRect(s * 26 - 4, -44, 8, 9); }
+    c.restore();
+  }
+  function drawTruck(c, o) {
+    c.save(); c.translate(o.x, o.y);
+    c.fillStyle = '#c21b3c'; rr(c, -62, -75, 124, 150, 5); c.fill();
+    c.fillStyle = '#ffb000'; c.fillRect(-62, 40, 124, 35);
+    c.fillStyle = '#003893'; for (let i = 0; i < 6; i++) { c.beginPath(); c.moveTo(-62 + i * 21, 40); c.lineTo(-52 + i * 21, 28); c.lineTo(-41 + i * 21, 40); c.fill(); }
+    c.fillStyle = '#0d1a4a'; c.font = '400 14px "Rozha One", serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('HORN PLEASE', 0, 59);
+    c.strokeStyle = 'rgba(255,255,255,.3)'; c.lineWidth = 2; for (let i = -1; i <= 1; i++) { c.beginPath(); c.moveTo(i * 30, -68); c.lineTo(i * 30, 22); c.stroke(); }
+    c.restore();
+  }
+  function drawDog(c, o) {
+    c.save(); c.translate(o.x, o.y); if ((o.dogV || 0) < 0) c.scale(-1, 1);
+    const leg = Math.sin(performance.now() / 45) * 4;
+    c.fillStyle = '#5b3f2a'; c.fillRect(-11 + leg, -10, 4, 20); c.fillRect(7 - leg, -10, 4, 20);
+    c.fillStyle = '#a97c50'; rr(c, -15, -6, 28, 12, 5); c.fill(); rr(c, 10, -6, 12, 12, 4); c.fill();
+    c.fillStyle = '#5b3f2a'; c.fillRect(-20, -2, 6, 3);
+    c.restore();
+  }
+  function drawDig(c, o) {
+    c.save(); c.translate(o.x, o.y);
+    c.fillStyle = '#6e5235'; c.beginPath(); c.ellipse(0, -2, o.w / 2, 18, 0, 0, 7); c.fill();
+    c.fillStyle = '#8d6d48'; c.beginPath(); c.ellipse(-8, -5, o.w / 3.6, 10, 0, 0, 7); c.fill();
+    c.fillStyle = '#ff7a1a'; c.fillRect(-o.w / 2 + 2, 10, o.w - 4, 9);
+    c.fillStyle = '#fff'; for (let i = 0; i < 4; i++) c.fillRect(-o.w / 2 + 8 + i * 18, 10, 8, 9);
+    c.restore();
+  }
+  function drawMomo(c, o) {
+    c.save(); c.translate(o.x, o.y);
+    c.fillStyle = '#f7f5ee'; c.beginPath(); c.ellipse(0, 2, 15, 11, 0, 0, 7); c.fill();
+    c.fillStyle = '#c21b3c'; c.beginPath(); c.ellipse(0, 3, 5, 3, 0, 0, 7); c.fill();
+    for (const p of [[-7, -2], [7, -2], [0, -6]]) {
+      c.fillStyle = '#efe0bd'; c.beginPath(); c.arc(p[0], p[1], 5.5, 0, 7); c.fill();
+      c.strokeStyle = '#b89a66'; c.lineWidth = 1; c.beginPath(); c.moveTo(p[0] - 2.5, p[1]); c.lineTo(p[0], p[1] - 3); c.lineTo(p[0] + 2.5, p[1]); c.stroke();
+    }
+    c.restore();
+  }
+  function drawHelmet(c, o) {
+    c.save(); c.translate(o.x, o.y);
+    c.strokeStyle = '#ffb000'; c.lineWidth = 3; c.beginPath(); c.arc(0, 0, 17, 0, 7); c.stroke();
+    c.fillStyle = '#dc143c'; c.beginPath(); c.arc(0, 2, 11, Math.PI, 0); c.lineTo(11, 6); c.lineTo(-11, 6); c.fill();
+    c.fillStyle = '#fff4dc'; c.fillRect(-4, -8, 8, 3);
+    c.restore();
+  }
+  function drawPlayer(c, x, y, lean, shield, flicker) {
+    if (flicker && Math.floor(performance.now() / 70) % 2) return;
+    c.save(); c.translate(x, y); c.rotate(lean);
+    if (shield) { c.strokeStyle = 'rgba(255,176,0,.9)'; c.lineWidth = 3; c.beginPath(); c.ellipse(0, 0, 21, 33, 0, 0, 7); c.stroke(); }
+    c.fillStyle = 'rgba(0,0,0,.28)'; c.beginPath(); c.ellipse(2, 3, 13, 26, 0, 0, 7); c.fill();
+    c.fillStyle = '#14141a'; rr(c, -3.5, -28, 7, 15, 3); c.fill(); rr(c, -3.5, 13, 7, 15, 3); c.fill();
+    c.fillStyle = '#dc143c'; rr(c, -9, -18, 18, 38, 7); c.fill();
+    c.fillStyle = '#c9ccd6'; c.fillRect(-14, -14, 28, 3);
+    c.fillStyle = '#003893'; rr(c, -11, -5, 22, 15, 6); c.fill();
+    c.fillStyle = shield ? '#ffb000' : '#fff4dc'; c.beginPath(); c.arc(0, -1, 7.5, 0, 7); c.fill();
+    c.restore();
+  }
+  function drawBike(c, o) {
+    c.save(); c.translate(o.x, o.y); c.rotate(Math.cos(o.y / (o.wl || 60) + (o.ph || 0)) * .18);
+    c.fillStyle = '#14141a'; rr(c, -3, -24, 6, 14, 3); c.fill(); rr(c, -3, 10, 6, 14, 3); c.fill();
+    c.fillStyle = '#2b2d38'; rr(c, -7, -14, 14, 30, 6); c.fill();
+    c.fillStyle = '#c9ccd6'; c.fillRect(-12, -14, 24, 3);
+    c.fillStyle = '#5a7d4a'; rr(c, -10, -4, 20, 13, 6); c.fill();
+    c.fillStyle = '#e8701a'; c.beginPath(); c.arc(0, -1, 6.5, 0, 7); c.fill();
+    c.restore();
+  }
+  function drawCycle(c, o) {
+    c.save(); c.translate(o.x, o.y);
+    c.fillStyle = '#14141a'; c.fillRect(-1.5, -22, 3, 14); c.fillRect(-1.5, 8, 3, 14);
+    c.fillStyle = '#7a8796'; c.fillRect(-1, -10, 2, 20); c.fillRect(-10, -12, 20, 2);
+    c.fillStyle = '#b5533c'; rr(c, -8, -4, 16, 11, 5); c.fill();
+    c.fillStyle = '#3f8f4f'; rr(c, -8, 10, 16, 10, 3); c.fill();
+    c.fillStyle = '#2f6d3c'; for (let i = 0; i < 3; i++) { c.beginPath(); c.arc(-5 + i * 5, 12, 2.5, 0, 7); c.fill(); }
+    c.fillStyle = '#3a2a20'; c.beginPath(); c.arc(0, -2, 5.5, 0, 7); c.fill();
+    c.restore();
+  }
+  function drawWalker(c, o) {
+    if (!o.icon) {
+      c.save(); c.fillStyle = 'rgba(245,242,230,.82)';
+      for (let i = 0; i < 8; i++) c.fillRect(ROAD_L + 8 + i * 38, o.y - 22, 22, 44);
+      c.restore();
+    }
+    const step = Math.sin(performance.now() / 110) * 3;
+    c.save(); c.translate(o.icon ? 0 : o.x, o.icon ? 0 : o.y);
+    c.fillStyle = '#1b1b22'; c.fillRect(-6, -7 + step, 4, 6); c.fillRect(2, 1 - step, 4, 6);
+    c.fillStyle = '#c21b3c'; rr(c, -10, -6, 20, 12, 5); c.fill();
+    c.fillStyle = '#d9a97c'; c.beginPath(); c.arc(0, 0, 5.5, 0, 7); c.fill();
+    c.fillStyle = '#1b1b22'; c.beginPath(); c.arc(0, -1, 4.5, 0, 7); c.fill();
+    c.restore();
+  }
+  function signalHead(c, x, y, green) {
+    c.fillStyle = '#14151c'; rr(c, x - 16, y - 13, 32, 26, 4); c.fill();
+    c.strokeStyle = green ? '#27d17f' : '#ff3b52'; c.fillStyle = c.strokeStyle; c.lineWidth = 4; c.lineCap = 'round';
+    c.beginPath();
+    if (green) { c.moveTo(x, y + 7); c.lineTo(x, y - 6); c.moveTo(x - 6, y); c.lineTo(x, y - 7); c.lineTo(x + 6, y); }
+    else { c.moveTo(x - 6, y - 6); c.lineTo(x + 6, y + 6); c.moveTo(x + 6, y - 6); c.lineTo(x - 6, y + 6); }
+    c.stroke(); c.lineCap = 'butt';
+  }
+  function drawSignal(c, o) {
+    if (o.icon) { signalHead(c, 0, -9, true); signalHead(c, 0, 12, false); return; }
+    c.fillStyle = 'rgba(245,242,230,.85)'; c.fillRect(ROAD_L, o.y - 3, ROAD_R - ROAD_L, 6);
+    c.fillStyle = '#2a2b33'; c.fillRect(ROAD_L - 12, o.y - 50, 5, 50); c.fillRect(ROAD_R + 7, o.y - 50, 5, 50); c.fillRect(ROAD_L - 12, o.y - 50, ROAD_R - ROAD_L + 24, 6);
+    for (let l = 0; l < 4; l++) signalHead(c, laneX(l), o.y - 34, o.greens.includes(l));
+  }
+  function drawGhost(c, x, y, color, down) {
+    c.save(); c.translate(x, y); if (down) c.rotate(1.2);
+    c.fillStyle = '#14141a'; rr(c, -3.5, -26, 7, 14, 3); c.fill(); rr(c, -3.5, 12, 7, 14, 3); c.fill();
+    c.fillStyle = color; rr(c, -9, -17, 18, 36, 7); c.fill();
+    c.fillStyle = '#f2f2e6'; c.beginPath(); c.arc(0, -1, 7, 0, 7); c.fill();
+    c.restore();
+  }
+  function renderGhosts(g, py) {
+    g.ghosts.forEach((gh, n) => {
+      const p = gh.path, count = p.length / 2, at = g.t / GHOST_STEP, i = Math.min(count - 1, Math.floor(at));
+      const j = Math.min(count - 1, i + 1), f = Math.min(1, at - i);
+      const d = (p[i * 2] + (p[j * 2] - p[i * 2]) * f) * 10, x = p[i * 2 + 1] + (p[j * 2 + 1] - p[i * 2 + 1]) * f;
+      const y = py - (d - g.dist), down = at >= count - 1;
+      if (y < -40 || y > H + 40) return;
+      ctx.globalAlpha = down ? .3 : .5;
+      drawGhost(ctx, x, y, GHOST_COLORS[n % GHOST_COLORS.length], down);
+      ctx.globalAlpha = down ? .5 : .95;
+      ctx.font = '800 12px Mukta, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(9,18,56,.9)'; ctx.strokeText(gh.label, x, y - 36);
+      ctx.fillStyle = GHOST_COLORS[n % GHOST_COLORS.length]; ctx.fillText(gh.label, x, y - 36);
+      ctx.globalAlpha = 1;
+    });
+  }
+  function renderSky(g, py) {
+    if (sky.weather === 'cloudy' || sky.weather === 'rain') { ctx.fillStyle = sky.weather === 'rain' ? 'rgba(40,55,85,.2)' : 'rgba(60,70,90,.12)'; ctx.fillRect(0, 0, W, H); }
+    if (sky.phase === 'dawn') { ctx.fillStyle = 'rgba(255,190,130,.13)'; ctx.fillRect(0, 0, W, H); }
+    if (sky.phase === 'dusk') { ctx.fillStyle = 'rgba(255,110,50,.16)'; ctx.fillRect(0, 0, W, H); ctx.fillStyle = 'rgba(30,20,70,.16)'; ctx.fillRect(0, 0, W, H); }
+    if (sky.phase === 'night') {
+      /* Dark road with a pool of headlight ahead of the scooter; traffic stays visible further out */
+      const lx = g.x, ly = py - 150, dark = ctx.createRadialGradient(lx, ly, 70, lx, ly, 460);
+      dark.addColorStop(0, 'rgba(8,12,42,.05)'); dark.addColorStop(.45, 'rgba(8,12,42,.42)'); dark.addColorStop(1, 'rgba(8,12,42,.68)');
+      ctx.fillStyle = dark; ctx.fillRect(0, 0, W, H);
+      const beam = ctx.createLinearGradient(0, py - 20, 0, py - 300);
+      beam.addColorStop(0, 'rgba(255,240,190,.3)'); beam.addColorStop(1, 'rgba(255,240,190,0)');
+      ctx.fillStyle = beam; ctx.beginPath(); ctx.moveTo(lx - 7, py - 24); ctx.lineTo(lx + 7, py - 24); ctx.lineTo(lx + 72, py - 300); ctx.lineTo(lx - 72, py - 300); ctx.fill();
+    }
+    if (sky.weather === 'fog') {
+      const fog = ctx.createLinearGradient(0, 0, 0, H * .55);
+      fog.addColorStop(0, 'rgba(205,212,220,.72)'); fog.addColorStop(.6, 'rgba(205,212,220,.4)'); fog.addColorStop(1, 'rgba(205,212,220,0)');
+      ctx.fillStyle = fog; ctx.fillRect(0, 0, W, H * .55);
+    }
+    if (sky.weather === 'rain') {
+      const t = reduced ? 400 : performance.now();
+      ctx.strokeStyle = sky.phase === 'night' ? 'rgba(190,210,255,.42)' : 'rgba(225,235,255,.5)'; ctx.lineWidth = 1.4; ctx.beginPath();
+      for (let i = 0; i < 70; i++) {
+        const x = (hash(i) * (W + 60) + t * .09) % (W + 60) - 30;
+        const y = (hash(i + 99) * (H + 60) + t * (.75 + hash(i + 7) * .4)) % (H + 60) - 30;
+        ctx.moveTo(x, y); ctx.lineTo(x - 5, y + 19);
+      }
+      ctx.stroke();
+    }
+  }
+  function drawDust(c) {
+    c.fillStyle = '#c9a97a';
+    for (const p of [[-10, 4, 11], [8, 5, 12], [0, -6, 13], [-16, -4, 7], [16, -4, 8]]) { c.beginPath(); c.arc(p[0], p[1], p[2], 0, 7); c.fill(); }
+  }
+  const ART = { cow: drawCow, pothole: drawPothole, tempo: drawTempo, micro: drawMicro, truck: drawTruck, dog: drawDog, dig: drawDig, momo: drawMomo, helmet: drawHelmet, bike: drawBike, cycle: drawCycle, walker: drawWalker, signal: drawSignal };
+
+  function drawScenery(dist) {
+    ctx.fillStyle = '#3a3c48'; ctx.fillRect(0, 0, W, H);
+    const blockH = 150, first = Math.floor((dist - 200) / blockH);
+    /* road surface wear */
+    for (let i = first; i < first + H / blockH + 3; i++) {
+      const y = dist - i * blockH + H - blockH, r = hash(i * 3.3);
+      if (r > .55) { ctx.fillStyle = r > .8 ? '#343641' : '#42444f'; ctx.fillRect(ROAD_L + hash(i) * 200, y, 60 + hash(i * 2) * 60, 46 + hash(i * 5) * 50); }
+    }
+    /* lane paint, fading in places as it does on the real road */
+    const dash = 72, off = dist % dash;
+    for (let l = 1; l < 4; l++) {
+      const x = ROAD_L + LANE_W * l;
+      for (let y = -dash + off; y < H; y += dash) {
+        const n = Math.floor((dist - y) / dash);
+        ctx.fillStyle = 'rgba(240,235,215,' + (l === 2 ? .75 : .1 + hash(n + l * 91) * .5) + ')';
+        ctx.fillRect(x - 2, y, 4, 34);
+      }
+    }
+    /* pavement and shopfronts */
+    ctx.fillStyle = '#8f8a7c'; ctx.fillRect(ROAD_L - 8, 0, 8, H); ctx.fillRect(ROAD_R, 0, 8, H);
+    for (const side of [0, 1]) {
+      const bx = side ? ROAD_R + 8 : 0, bw = ROAD_L - 8;
+      for (let i = first; i < first + H / blockH + 3; i++) {
+        const n = i * 2 + side, y = dist - i * blockH + H - blockH;
+        ctx.fillStyle = BUILD[Math.floor(hash(n) * BUILD.length)]; ctx.fillRect(bx, y, bw, blockH);
+        ctx.fillStyle = 'rgba(20,20,30,.45)'; ctx.fillRect(bx, y + blockH - 2, bw, 2);
+        const shop = side ? bx : bx + bw - 7;
+        ctx.fillStyle = hash(n * 7) > .5 ? '#55606f' : '#23408c'; ctx.fillRect(shop, y + 22, 7, 100);
+        ctx.fillStyle = 'rgba(255,255,255,.2)'; for (let s = 0; s < 8; s++) ctx.fillRect(shop, y + 28 + s * 12, 7, 1);
+      }
+    }
+    /* poles and the tangle of overhead wires */
+    const poleGap = 330, pf = Math.floor((dist - 200) / poleGap);
+    ctx.lineWidth = 1;
+    for (let i = pf; i < pf + H / poleGap + 3; i++) {
+      for (const side of [0, 1]) {
+        const y = dist - i * poleGap - side * 110 + H - 200, x = side ? ROAD_R + 12 : ROAD_L - 12;
+        ctx.fillStyle = '#1c1c24'; ctx.fillRect(x - 2.5, y - 2.5, 5, 5);
+        for (let w = 0; w < 5; w++) {
+          ctx.strokeStyle = 'rgba(15,15,22,.65)';
+          ctx.beginPath(); ctx.moveTo(x, y);
+          ctx.quadraticCurveTo(x + (side ? 1 : -1) * (8 + w * 4 + hash(i + w) * 8), y - poleGap / 2, x, y - poleGap);
+          ctx.stroke();
+        }
+        if (hash(i * 13 + side) > .72) {
+          ctx.strokeStyle = 'rgba(15,15,22,.5)';
+          for (let w = 0; w < 2; w++) { ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(200, y - 30 - w * 26, side ? ROAD_L - 12 : ROAD_R + 12, y - 110); ctx.stroke(); }
+        }
+      }
+    }
+  }
+
+  function drawGate(i, y) {
+    if (y < -90 || y > H + 40) return;
+    ctx.fillStyle = 'rgba(0,0,0,.2)'; ctx.fillRect(ROAD_L, y - 3, ROAD_R - ROAD_L, 6);
+    const n = 22;
+    for (let k = 0; k < n; k++) {
+      const t = k / (n - 1), x = 26 + t * 348, sag = Math.sin(t * Math.PI) * 14;
+      ctx.fillStyle = FLAGS[k % 5]; ctx.fillRect(x - 6, y - 24 + sag, 12, 15);
+    }
+    ctx.strokeStyle = '#f2f2e6'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(26, y - 24); ctx.quadraticCurveTo(200, y + 4, 374, y - 24); ctx.stroke();
+    const s = STOPS[i % SEGS];
+    ctx.fillStyle = '#003893'; rr(ctx, 118, y - 74, 164, 44, 3); ctx.fill();
+    ctx.strokeStyle = '#ffb000'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff4dc';
+    ctx.font = '600 15px Mukta, sans-serif'; ctx.fillText(s[1], 200, y - 62);
+    ctx.font = '800 14px Mukta, sans-serif'; ctx.fillText(s[0], 200, y - 43);
+  }
+
+  /* ---------- Game state ---------- */
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let mode = 'home', G = null, freeze = 0, shake = 0, showHint = true, rulesFrom = 'home';
+  const keys = { left: false, right: false };
+  let drag = null;
+
+  function newGame(seed, attract) {
+    return { road: makeRoad(seed), row: null, objs: [], dist: 0, x: laneX(1), target: laneX(1), vx: 0, t: 0, nextSample: 0, path: [], ghosts: [], hold: 0, slow: 1, dust: 0, shield: false, inv: 0,
+      momos: 0, nears: 0, greens: 0, fines: 0, floats: [], attract, gate: 1, crashT: 0, cause: null, banner: 0, bannerI: 0, lapped: false };
+  }
+  const kmOf = g => g.dist / PX_PER_KM;
+  const scoreOf = g => Math.max(0, Math.floor(kmOf(g) * 100) + g.momos * 25 + g.nears * 10 + g.greens * 20 - g.fines * 100);
+  function speedAt(km) { return 270 + 300 * Math.min(1, km / LAP_KM) + (km > LAP_KM ? Math.min(150, (km - LAP_KM) * 10) : 0); }
+  const laneIndex = x => Math.max(0, Math.min(3, Math.round((x - laneX(0)) / LANE_W)));
+  function stepLane(g, d) { g.target = laneX(Math.max(0, Math.min(3, laneIndex(g.target) + d))); }
+  function float(g, x, y, txt, color) { g.floats.push({ x, y, txt, color: color || '#fff4dc', life: 1 }); }
+
+  function spawn(g) {
+    if (!g.row) g.row = g.road.next();
+    while (g.dist >= g.row.at) {
+      for (const it of g.row.items) {
+        if (it.t === 'dust') { g.dust = 3.5; if (!g.attract) float(g, 200, 90, 'Dhulo! Hold your line', '#ffe7b0'); continue; }
+        g.objs.push(Object.assign({}, it, { y: -80 - (it.off || 0) - (g.dist - g.row.at) }));
+      }
+      g.row = g.road.next();
+    }
+  }
+
+  function update(g, dt) {
+    const km = kmOf(g), py = playerY();
+    g.slow = Math.min(1, g.slow + dt * .42);
+    const crashed = !!g.cause;
+    const v = crashed ? Math.max(0, speedAt(km) * (1 - g.crashT / .35)) : speedAt(km) * g.slow;
+    g.dist += v * dt;
+    spawn(g);
+
+    /* steering */
+    if (g.attract || g.bot) {
+      const B = g.bot || { look: 340, every: 0, speed: 0 };
+      g.think = (g.think || 0) - dt;
+      if (g.think <= 0) {
+        g.think = B.every;
+        const near = g.objs.filter(o => o.t !== 'momo' && o.t !== 'helmet' && o.t !== 'signal' && o.y > py - B.look && o.y < py + 60);
+        const light = g.objs.find(o => o.t === 'signal' && !o.checked && o.y > py - B.look);
+        let bestLane = 1, bestCost = 1e9;
+        for (let l = 0; l < 4; l++) {
+          const lx = laneX(l); let cost = Math.abs(lx - g.x) * .02;
+          for (const o of near) if (Math.abs(o.x - lx) < o.w / 2 + 26 || (o.blink && Math.abs(o.toX - lx) < o.w / 2 + 26)) cost += o.soft ? 2 : 10;
+          if (light && !light.greens.includes(l)) cost += 3;
+          if (cost < bestCost) { bestCost = cost; bestLane = l; }
+        }
+        g.want = laneX(bestLane);
+      }
+      if (B.speed) g.target += Math.max(-B.speed * dt, Math.min(B.speed * dt, g.want - g.target));
+      else g.target = g.want;
+    } else if (!crashed) {
+      /* Holding a key keeps changing lane after a short pause */
+      const key = (keys.right ? 1 : 0) - (keys.left ? 1 : 0);
+      if (key) { g.hold += dt; if (g.hold > .26) { g.hold = .11; stepLane(g, key); } } else g.hold = 0;
+    }
+    g.target = Math.max(ROAD_L + 16, Math.min(ROAD_R - 16, g.target));
+    const prevX = g.x;
+    if (!crashed) g.x += (g.target - g.x) * Math.min(1, dt * 13);
+    g.vx = (g.x - prevX) / Math.max(dt, .001);
+
+    /* Record this ride so others can race it as a ghost */
+    g.t += dt;
+    if (!g.attract && !g.bot && !crashed && g.t >= g.nextSample && g.path.length < 3000) {
+      g.path.push(Math.round(g.dist / 10), Math.round(g.x));
+      g.nextSample += GHOST_STEP;
+    }
+
+    /* gates at each stop */
+    const gatePx = g.gate * SEG_KM * PX_PER_KM;
+    if (g.dist >= gatePx && !crashed) {
+      g.banner = 1.5; g.bannerI = g.gate;
+      if (!g.attract) { sfx.stop(); if (g.gate === SEGS && !g.lapped) { g.lapped = true; float(g, 200, H * .4, 'Lap complete. Keep going!', '#ffb000'); } }
+      g.gate++;
+    }
+
+    /* traffic */
+    const pw = 22, ph = 44;
+    for (const o of g.objs) {
+      o.y += v * (o.brake || o.rate) * dt;
+      if (o.vx) { o.x += o.vx * dt; if (o.x < ROAD_L + 34 || o.x > ROAD_R - 34) o.vx = -o.vx; }
+      if (o.dogV && o.y > H * .18) {
+        if (!o.barked) { o.barked = true; if (!g.attract) float(g, o.dogV > 0 ? 96 : 304, o.y - 22, 'Bhau bhau!', '#ffe7b0'); }
+        o.x += o.dogV * dt;
+      }
+      if (o.t === 'micro' && o.swerve && !o.swerved && o.y > H * .2) {
+        o.swerved = true; o.blink = true; o.wait = .45; o.brake = .68;
+        if (!g.attract) float(g, o.x, o.y - 56, 'Kalanki! Kalanki!', '#ffb000');
+      }
+      if (o.walkV && o.y > 0) o.x += o.walkV * dt;
+      if (o.weave) o.x = o.bx + Math.sin(o.y / o.wl + o.ph) * o.weave;
+      if (o.wait > 0) o.wait -= dt;
+      else if (o.blink && o.toX != null) {
+        const step = 150 * dt, gap = o.toX - o.x;
+        if (Math.abs(gap) <= step) { o.x = o.toX; o.blink = false; } else o.x += Math.sign(gap) * step;
+      }
+      if (g.attract || crashed || o.gone) continue;
+
+      const hit = Math.abs(o.x - g.x) < (o.w * .8 + pw) / 2 && Math.abs(o.y - py) < (o.h * .82 + ph) / 2;
+      if (o.t === 'signal') {
+        if (!o.checked && o.y >= py) {
+          o.checked = true;
+          const lane = Math.max(0, Math.min(3, Math.floor((g.x - ROAD_L) / LANE_W)));
+          if (o.greens.includes(lane)) { g.greens++; sfx.green(); float(g, g.x, py - 44, 'Hariyo! +20', '#27d17f'); }
+          else { g.fines++; g.slow = .6; sfx.whistle(); float(g, g.x, py - 44, 'Prrrt! Police fine -100', '#ff8a98'); }
+        }
+      } else if (o.t === 'momo') {
+        if (hit) { o.gone = true; g.momos++; sfx.momo(); float(g, o.x, o.y - 14, '+25', '#ffb000'); }
+      } else if (o.t === 'helmet') {
+        if (hit) { o.gone = true; g.shield = true; sfx.helmet(); float(g, o.x, o.y - 20, 'Helmet on', '#ffb000'); }
+      } else if (o.soft) {
+        if (hit && !o.struck) { o.struck = true; g.slow = .55; sfx.bump(); if (!reduced) shake = .22; float(g, o.x, o.y - 20, 'Khaldo!', '#ffe7b0'); }
+      } else {
+        if (hit && g.inv <= 0) {
+          if (g.shield) { g.shield = false; g.inv = 1.2; o.gone = true; sfx.helmet(); float(g, g.x, py - 44, 'Helmet le bachayo!', '#ffb000'); }
+          else { g.cause = o.t; g.crashT = 0; sfx.crash(); if (!reduced) shake = .45; }
+        } else if (!o.passed && o.y - o.h / 2 > py + ph / 2) {
+          o.passed = true;
+          if (Math.abs(o.x - g.x) - (o.w + pw) / 2 < 16) { g.nears++; sfx.near(); float(g, g.x, py - 44, 'Jhandai! +10', '#fff4dc'); }
+        }
+      }
+    }
+    g.objs = g.objs.filter(o => !o.gone && o.y < H + 170 && o.x > -60 && o.x < W + 60);
+
+    g.inv = Math.max(0, g.inv - dt); g.dust = Math.max(0, g.dust - dt); g.banner = Math.max(0, g.banner - dt);
+    for (const f of g.floats) { f.life -= dt * .9; f.y -= 34 * dt; }
+    g.floats = g.floats.filter(f => f.life > 0);
+
+    if (crashed) { g.crashT += dt; if (g.crashT > .85 && !g.attract && mode === 'play') endRun(g); }
+  }
+
+  function render(g) {
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+    ctx.save();
+    if (shake > 0) ctx.translate((hash(performance.now()) - .5) * 12 * shake * 2, (hash(performance.now() + 7) - .5) * 12 * shake * 2);
+    drawScenery(g.dist);
+    const py = playerY(), order = { walker: 0, pothole: 0, momo: 1, helmet: 1, dig: 2, dog: 3, cow: 3, cycle: 3, bike: 4, tempo: 4, micro: 4, truck: 5, signal: 6 };
+    /* painted gate on the road, behind traffic */
+    for (let i = g.gate - 1; i <= g.gate + 1; i++) if (i > 0) drawGate(i, py - (i * SEG_KM * PX_PER_KM - g.dist));
+    renderGhosts(g, py);
+    const sorted = g.objs.slice().sort((a, b) => order[a.t] - order[b.t]);
+    for (const o of sorted) if (o.y > -180) ART[o.t](ctx, o);
+    if (g.cause) {
+      ctx.save(); ctx.translate(g.x, py); ctx.rotate(Math.min(1.3, g.crashT * 5)); ctx.translate(-g.x, -py);
+      drawPlayer(ctx, g.x, py, 0, false, false); ctx.restore();
+    } else {
+      drawPlayer(ctx, g.x, py, Math.max(-.32, Math.min(.32, g.vx / 900)), g.shield, g.inv > 0);
+    }
+    renderSky(g, py);
+    if (g.dust > 0) {
+      const a = Math.min(1, g.dust, (3.5 - g.dust) * 2.4 + .05), grad = ctx.createLinearGradient(0, 0, 0, H * .62);
+      grad.addColorStop(0, 'rgba(201,169,122,' + .97 * a + ')'); grad.addColorStop(.7, 'rgba(201,169,122,' + .9 * a + ')'); grad.addColorStop(1, 'rgba(201,169,122,0)');
+      ctx.fillStyle = grad; ctx.fillRect(0, 0, W, H * .62);
+    }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const f of g.floats) {
+      ctx.globalAlpha = Math.min(1, f.life * 1.6); ctx.font = '800 17px Mukta, sans-serif';
+      ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(9,18,56,.85)'; ctx.strokeText(f.txt, f.x, f.y);
+      ctx.fillStyle = f.color; ctx.fillText(f.txt, f.x, f.y);
+    }
+    ctx.globalAlpha = 1;
+    if (mode === 'play' && freeze > 0) {
+      const text = freeze > .7 ? String(Math.ceil(freeze - .7)) : 'Jaau!';
+      ctx.font = '400 72px "Rozha One", serif'; ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(9,18,56,.9)';
+      ctx.strokeText(text, 200, H * .4); ctx.fillStyle = '#ffb000'; ctx.fillText(text, 200, H * .4);
+      if (showHint) {
+        ctx.font = '800 18px Mukta, sans-serif'; ctx.lineWidth = 5;
+        const hint = matchMedia('(pointer: coarse)').matches ? 'Tap or swipe to change lane' : 'Press ← → to change lane';
+        ctx.strokeText(hint, 200, H * .4 + 62); ctx.fillStyle = '#fff4dc'; ctx.fillText(hint, 200, H * .4 + 62);
+      }
+    }
+    if (g.banner > 0 && !g.attract) {
+      const s = STOPS[g.bannerI % SEGS];
+      ctx.globalAlpha = Math.min(1, g.banner * 1.8);
+      ctx.font = '400 34px "Rozha One", serif'; ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(9,18,56,.9)';
+      ctx.strokeText(s[1], 200, 104); ctx.fillStyle = '#ffb000'; ctx.fillText(s[1], 200, 104);
+      ctx.font = '800 16px Mukta, sans-serif'; ctx.strokeText(s[0], 200, 136); ctx.fillStyle = '#fff4dc'; ctx.fillText(s[0], 200, 136);
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+
+  /* ---------- DOM ---------- */
+  const $ = id => document.getElementById(id);
+  const ui = { hud: $('hud'), home: $('home'), result: $('result'), pause: $('pauseSheet') };
+  const stage = $('stage');
+  const track = $('hudTrack');
+  for (let i = 0; i < SEGS; i++) track.appendChild(document.createElement('i'));
+
+  function updateHud(g) {
+    const km = kmOf(g), seg = Math.floor(km / SEG_KM);
+    $('hudNext').textContent = stopName(seg + 1);
+    $('hudKm').textContent = km.toFixed(1) + ' km';
+    $('hudMomo').textContent = '🥟 ' + g.momos;
+    $('hudScore').textContent = scoreOf(g).toLocaleString('en-US');
+    $('hudHelmet').hidden = !g.shield;
+    const lapSeg = Math.min(seg, SEGS);
+    Array.from(track.children).forEach((el, i) => { el.className = i < lapSeg ? 'done' : i === lapSeg ? 'now' : ''; });
+  }
+
+  function drawRing(km) {
+    const svg = $('ring'), cx = 170, cy = 145, R = 92, ns = 'http://www.w3.org/2000/svg';
+    svg.textContent = '';
+    const el = (n, a) => { const e = document.createElementNS(ns, n); for (const k in a) e.setAttribute(k, a[k]); svg.appendChild(e); return e; };
+    /* Laid out to match the city: start in the south-east, head north up the east side, return along the south */
+    const angle = i => (Math.PI / 4) - (i / SEGS) * Math.PI * 2;
+    el('circle', { cx, cy, r: R, fill: 'none', stroke: 'rgba(255,244,220,.2)', 'stroke-width': 8 });
+    const frac = Math.min(1, km / LAP_KM);
+    if (frac > 0) {
+      const C = 2 * Math.PI * R;
+      el('circle', { cx, cy, r: R, fill: 'none', stroke: '#ffb000', 'stroke-width': 8,
+        'stroke-dasharray': (frac * C) + ' ' + C, transform: 'rotate(45 ' + cx + ' ' + cy + ') scale(1 1)', style: 'transform-box:view-box;transform-origin:' + cx + 'px ' + cy + 'px;transform:rotate(45deg) scaleY(-1)' });
+    }
+    const reachedSeg = Math.floor(km / SEG_KM);
+    STOPS.forEach((s, i) => {
+      const a = angle(i), x = cx + Math.cos(a) * R, y = cy + Math.sin(a) * R, reached = i <= reachedSeg && km > 0;
+      el('circle', { cx: x, cy: y, r: i === 0 ? 6 : 4, fill: reached ? '#ffb000' : '#0d1a4a', stroke: i === 0 ? '#dc143c' : '#fff4dc', 'stroke-width': 2 });
+      const lx = cx + Math.cos(a) * (R + 11), ly = cy + Math.sin(a) * (R + 11) + 4;
+      const c = Math.cos(a);
+      const t = el('text', { x: lx, y: ly, 'text-anchor': c > .25 ? 'start' : c < -.25 ? 'end' : 'middle' });
+      if (reached) t.setAttribute('class', 'reached');
+      t.textContent = s[0];
+    });
+    const big = el('text', { x: cx, y: cy + 4, 'text-anchor': 'middle', class: 'big' }); big.textContent = LAP_KM + ' km';
+    const sm = el('text', { x: cx, y: cy + 24, 'text-anchor': 'middle', class: 'small' }); sm.textContent = 'one lap';
+  }
+
+  function refreshSide() {
+    const best = save.best;
+    const road = save.day - LAUNCH + 1;
+    $('sideTitle').textContent = 'Road #' + road + ' · ' + dayLabel(save.day);
+    $('homeKicker').textContent = 'Road #' + road + ' · ' + dayLabel(save.day) + (save.tries ? ' · Best ' + (best ? best.score.toLocaleString('en-US') : 0) : '') + ' · ' + skyLabel();
+    $('sideBest').textContent = best ? best.score.toLocaleString('en-US') : '0';
+    $('sideTries').textContent = save.tries;
+    $('sideStreak').textContent = save.streak;
+    drawRing(best ? best.km : 0);
+  }
+
+  function fillCells(container, km) {
+    container.textContent = '';
+    const seg = Math.floor(km / SEG_KM), lapped = km >= LAP_KM;
+    for (let i = 0; i < SEGS; i++) {
+      const c = document.createElement('i');
+      c.className = (lapped || i < seg) ? 'done' : i === seg ? 'end' : '';
+      container.appendChild(c);
+    }
+  }
+
+  function routeText(km) {
+    if (km >= LAP_KM) return 'Full lap of the Ring Road, ' + km.toFixed(1) + ' km';
+    const seg = Math.floor(km / SEG_KM);
+    if (seg < 1) return 'Did not leave Koteshwor, ' + km.toFixed(1) + ' km';
+    return 'Koteshwor → ' + stopName(seg) + ', ' + km.toFixed(1) + ' km';
+  }
+
+  function shareText() {
+    const b = save.best; if (!b) return '';
+    const seg = Math.floor(b.km / SEG_KM), lapped = b.km >= LAP_KM;
+    let grid = '';
+    for (let i = 0; i < SEGS; i++) grid += (lapped || i < seg) ? '🟩' : i === seg ? '🟥' : '⬜';
+    return 'Ring Road Rush #' + (save.day - LAUNCH + 1) + ' 🛵 Try ' + save.tries + '\n'
+      + routeText(b.km) + '\n' + grid + '\n'
+      + '🥟 ' + b.momos + ' · ' + b.score.toLocaleString('en-US') + ' pts\n'
+      + CAUSES[b.cause][0];
+  }
+
+  function start() {
+    if (!audio) { try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audio = null; } }
+    if (audio && audio.state === 'suspended') audio.resume();
+    const day = rollDay();
+    sky.phase = nepalPhase();
+    if (save.lastDay !== day) { save.streak = save.lastDay === day - 1 ? save.streak + 1 : 1; save.lastDay = day; }
+    save.tries++; persist(); refreshSide();
+    sendEvent('start');
+    /* First ride of the day is the same road for everyone; each retry shuffles the traffic */
+    G = newGame((seedFor(day) ^ Math.imul(save.tries - 1, 0x9e3779b1)) >>> 0, false);
+    const me = API ? getPlayerId().slice(0, 4) : '';
+    G.ghosts = ghostList.map(gh => ({ path: gh.path, label: gh.id === me ? 'Your best' : (gh.name || 'Rider ' + gh.id) }));
+    mode = 'play'; shake = 0;
+    /* Full countdown and steering hint on the first ride; a quick restart after that */
+    freeze = showHint ? 3.7 : .7;
+    ui.home.hidden = true; ui.result.hidden = true; ui.pause.hidden = true; ui.hud.hidden = false;
+    stage.classList.add('playing');
+    $('fallback').hidden = true;
+    keys.left = keys.right = false; drag = null;
+    canvas.setAttribute('tabindex', '-1');
+    canvas.focus({ preventScroll: true });
+  }
+
+  function pause() {
+    if (mode !== 'play' || G.cause) return;
+    mode = 'paused'; keys.left = keys.right = false; drag = null;
+    showHint = false;
+    stage.classList.remove('playing');
+    ui.pause.hidden = false;
+    $('resumeBtn').focus({ preventScroll: true });
+  }
+  function resume() {
+    if (mode !== 'paused') return;
+    mode = 'play'; freeze = 1.7;
+    ui.pause.hidden = true; ui.home.hidden = true;
+    stage.classList.add('playing');
+    canvas.focus({ preventScroll: true });
+  }
+  function showRules(from) {
+    rulesFrom = from;
+    ui.result.hidden = true; ui.pause.hidden = true; ui.home.hidden = false;
+    $('startBtn').textContent = from === 'pause' ? 'Continue' : from === 'result' ? 'Ride again' : 'Start riding';
+    $('startBtn').focus({ preventScroll: true });
+  }
+
+  function endRun(g) {
+    mode = 'result'; showHint = false;
+    stage.classList.remove('playing');
+    const km = kmOf(g), score = scoreOf(g), run = { score, km, momos: g.momos, cause: g.cause };
+    const newBest = !save.best || score > save.best.score;
+    if (newBest) save.best = run;
+    persist(); refreshSide();
+    sendEvent('end', { km: +km.toFixed(2), score, momos: g.momos, cause: g.cause });
+    sendGhost(g, km, score);
+    const road = save.day - LAUNCH + 1;
+    $('resKicker').textContent = 'Road #' + road + ' · Try ' + save.tries + (newBest ? ' · New best' : '');
+    $('resCause').textContent = CAUSES[g.cause][0];
+    $('resCauseEn').textContent = CAUSES[g.cause][1];
+    fillCells($('resCells'), km);
+    $('resRoute').textContent = routeText(km);
+    $('resScore').textContent = score.toLocaleString('en-US');
+    $('resBest').textContent = save.best.score.toLocaleString('en-US');
+    $('resMomo').textContent = g.momos;
+    $('resStreak').textContent = save.streak;
+    $('copyNote').textContent = 'Paste it in your group chat and see who gets furthest.';
+    ui.hud.hidden = true; ui.result.hidden = false;
+    $('retryBtn').focus({ preventScroll: true });
+  }
+
+  $('startBtn').addEventListener('click', () => { if (rulesFrom === 'pause') resume(); else start(); });
+  $('retryBtn').addEventListener('click', start);
+  $('pauseBtn').addEventListener('click', pause);
+  $('resumeBtn').addEventListener('click', resume);
+  $('pauseRulesBtn').addEventListener('click', () => showRules('pause'));
+  $('resRulesBtn').addEventListener('click', () => showRules('result'));
+  $('copyBtn').addEventListener('click', function () {
+    const text = shareText(), box = $('fallback');
+    const manual = () => { box.value = text; box.hidden = false; box.focus(); box.select(); $('copyNote').textContent = 'Copying is blocked here. Select the text below and copy it.'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(() => { $('copyNote').textContent = 'Copied. Paste it in your group chat.'; }, manual);
+    } else manual();
+  });
+  $('muteBtn').addEventListener('click', function () {
+    muted = !muted; this.textContent = muted ? 'Sound off' : 'Sound on'; this.setAttribute('aria-pressed', String(muted));
+  });
+
+  /* ---------- Input ---------- */
+  addEventListener('keydown', e => {
+    if (e.target && e.target.id === 'riderName') return;
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { keys.left = true; if (mode === 'play') { e.preventDefault(); if (!e.repeat) stepLane(G, -1); } }
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { keys.right = true; if (mode === 'play') { e.preventDefault(); if (!e.repeat) stepLane(G, 1); } }
+    if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') { if (mode === 'play') pause(); else if (mode === 'paused' && !ui.pause.hidden) resume(); }
+  });
+  addEventListener('keyup', e => {
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
+  });
+  addEventListener('blur', () => { keys.left = keys.right = false; drag = null; });
+  canvas.addEventListener('pointerdown', e => {
+    if (mode !== 'play') return;
+    drag = { id: e.pointerId, x: e.clientX, lane: laneIndex(G.target), steps: 0, moved: false, at: performance.now() };
+    try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ }
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id || mode !== 'play') return;
+    /* One lane per swipe distance, with a dead zone so the scooter does not flicker between lanes */
+    const dx = (e.clientX - drag.x) / scale, SWIPE = 58;
+    if (Math.abs(dx) > 8) drag.moved = true;
+    if (Math.abs(dx - drag.steps * SWIPE) > 36) drag.steps = Math.round(dx / SWIPE);
+    G.target = laneX(Math.max(0, Math.min(3, drag.lane + drag.steps)));
+  });
+  const endDrag = () => { drag = null; };
+  canvas.addEventListener('pointerup', e => {
+    if (drag && !drag.moved && performance.now() - drag.at < 320 && mode === 'play') {
+      const r = canvas.getBoundingClientRect();
+      stepLane(G, e.clientX < r.left + r.width / 2 ? -1 : 1);
+    }
+    drag = null;
+  });
+  canvas.addEventListener('pointercancel', endDrag);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+
+  /* ---------- Sizing and loop ---------- */
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    dpr = Math.min(2, devicePixelRatio || 1);
+    canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
+    scale = r.width / W; H = r.height / scale;
+  }
+  addEventListener('resize', () => { resize(); if (G) render(G); });
+
+  function legendIcon(art, obj, zoom) {
+    const c = document.createElement('canvas'); c.width = c.height = 68;
+    const x = c.getContext('2d'); x.setTransform(zoom, 0, 0, zoom, 34, 34);
+    art(x, Object.assign({ x: 0, y: 0 }, obj));
+    return c;
+  }
+  const ICONS = {
+    cow: [drawCow, { w: 60, h: 34 }, .9], micro: [drawMicro, { w: 52, h: 90 }, .62], tempo: [drawTempo, {}, .9],
+    truck: [drawTruck, {}, .36], dog: [drawDog, { dogV: 1 }, 1.2], dig: [drawDig, { w: 78, h: 34 }, .7],
+    bike: [drawBike, {}, 1.3], cycle: [drawCycle, {}, 1.3], walker: [drawWalker, { icon: true }, 1.6], signal: [drawSignal, { icon: true }, .9],
+    pothole: [drawPothole, {}, 1], dust: [drawDust, {}, 1], momo: [drawMomo, {}, 1.5], helmet: [drawHelmet, {}, 1.4]
+  };
+  const RULES = {
+    en: {
+      goalT: 'Your goal', goal: 'Ride as far as you can. One full lap of the Ring Road is 27 km. Your scooter moves by itself and gets faster, so you only steer.',
+      steerT: 'How to steer', steer: 'The road has 4 lanes. On a phone, tap the left or right side of the screen, or swipe, to move one lane. On a computer, press ← → or A and D. Press P to pause.',
+      ghostT: 'Other riders', ghost: "Today's best riders appear as see-through scooters next to you. They are recordings of real rides, and they cannot hit you.",
+      stop: 'Hit one and your ride ends', slow: 'These make it harder', help: 'These help you',
+      items: {
+        bike: ['Motorbike', 'Weaves around its lane'], cycle: ['Cycle', 'Slow, and wobbles a little'],
+        walker: ['Zebra crossing', 'People walk across, so watch for them'],
+        signal: ['Traffic light', 'Ride under a green arrow. A red X costs 100 points and slows you'],
+        cow: ['Gai', 'Stands in the road and walks slowly'], micro: ['Microbus', 'An orange blinker means it is changing lane'],
+        tempo: ['Safa Tempo', 'Moves slower than you'], truck: ['Truck', 'Takes up two lanes'],
+        dog: ['Kukur', 'Runs across the road'], dig: ['Dug-up road', 'Only one lane stays open'],
+        pothole: ['Khaldo', 'Slows you for a moment'], dust: ['Dhulo', 'Hides the road ahead for about 3 seconds'],
+        momo: ['Momo', '+25 points'], helmet: ['Helmet', 'Saves you from one crash']
+      },
+      pointsT: 'Points', pts: [['100', 'for each km'], ['25', 'for each momo'], ['20', 'for each green light'], ['10', 'for each close pass']],
+      dailyT: 'Every day', daily: 'Your first ride today is on the same road as everyone else. Every time you ride again, the traffic moves to new places. Your best score counts, and a new road opens at midnight, Nepal time.'
+    },
+    ne: {
+      goalT: 'लक्ष्य', goal: 'सकेसम्म टाढा पुग्नुहोस्। रिङरोडको पूरा एक फन्को २७ किमी हो। स्कुटर आफैं अगाडि बढ्छ र बिस्तारै छिटो हुन्छ, तपाईंले मोड्ने मात्र हो।',
+      steerT: 'कसरी मोड्ने', steer: 'सडकमा ४ लेन छन्। फोनमा स्क्रिनको दायाँ वा बायाँ छेउमा ट्याप वा स्वाइप गर्दा एक लेन सर्छ। कम्प्युटरमा ← → वा A र D थिच्नुहोस्। रोक्न P थिच्नुहोस्।',
+      ghostT: 'अरू खेलाडी', ghost: 'आजका उत्कृष्ट खेलाडी पारदर्शी स्कुटरमा छेउमै देखिन्छन्। यी साँचो राइडका रेकर्डिङ हुन्, यिनले ठोक्दैनन्।',
+      stop: 'ठोक्किनुभयो भने खेल सकिन्छ', slow: 'यिनले गाह्रो बनाउँछन्', help: 'यिनले मद्दत गर्छन्',
+      items: {
+        bike: ['मोटरबाइक', 'लेनभित्रै घुमाउँदै चल्छ'], cycle: ['साइकल', 'ढिलो चल्छ, अलिअलि हल्लिन्छ'],
+        walker: ['जेब्रा क्रसिङ', 'मानिस बाटो काट्छन्, ध्यान दिनुहोस्'],
+        signal: ['ट्राफिक बत्ती', 'हरियो तीरमुनि जानुहोस्। रातो क्रसमा १०० अंक कट्छ र ढिलो हुन्छ'],
+        cow: ['गाई', 'बाटोमै उभिन्छ, बिस्तारै हिँड्छ'], micro: ['माइक्रोबस', 'सुन्तला बत्ती बल्यो भने लेन बदल्छ'],
+        tempo: ['सफा टेम्पो', 'तपाईंभन्दा ढिलो चल्छ'], truck: ['ट्रक', 'दुई लेन ओगट्छ'],
+        dog: ['कुकुर', 'बाटो काटेर दौडिन्छ'], dig: ['खनेको बाटो', 'एउटा लेन मात्र खुला हुन्छ'],
+        pothole: ['खाल्डो', 'केही बेर ढिलो बनाउँछ'], dust: ['धुलो', 'अगाडिको बाटो करिब ३ सेकेन्ड देखिँदैन'],
+        momo: ['मोमो', '+२५ अंक'], helmet: ['हेल्मेट', 'एक पटक ठोक्किँदा बचाउँछ']
+      },
+      pointsT: 'अंक', pts: [['१००', 'प्रति किमी'], ['२५', 'प्रति मोमो'], ['२०', 'हरियो बत्तीमा'], ['१०', 'नजिकबाट जोगिँदा']],
+      dailyT: 'हरेक दिन', daily: 'आजको पहिलो राइड सबैको एउटै बाटोमा हुन्छ। फेरि खेल्दा गाई र गाडीहरू नयाँ ठाउँमा हुन्छन्। सबैभन्दा राम्रो अंक गनिन्छ। नयाँ बाटो नेपाल समय राति १२ बजे खुल्छ।'
+    }
+  };
+  function renderRules(lang) {
+    const R = RULES[lang], box = $('rulesBody');
+    const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    box.textContent = '';
+    box.lang = lang === 'ne' ? 'ne' : 'en';
+    const para = (t, b) => { const d = mk('div', 'rule-block'); d.appendChild(mk('h3', '', t)); d.appendChild(mk('p', '', b)); box.appendChild(d); };
+    const group = (cls, title, list) => {
+      const d = mk('div', 'rule-block'); d.appendChild(mk('p', 'tag ' + cls, title));
+      const ul = mk('ul', 'legend');
+      for (const k of list) {
+        const li = mk('li'), wrap = mk('div'), ic = ICONS[k];
+        wrap.style.minWidth = '0'; wrap.appendChild(mk('b', '', R.items[k][0])); wrap.appendChild(mk('span', '', R.items[k][1]));
+        li.appendChild(legendIcon(ic[0], ic[1], ic[2])); li.appendChild(wrap); ul.appendChild(li);
+      }
+      d.appendChild(ul); box.appendChild(d);
+    };
+    para(R.goalT, R.goal);
+    para(R.steerT, R.steer);
+    if (API) para(R.ghostT, R.ghost);
+    group('stop', R.stop, ['cow', 'bike', 'micro', 'cycle', 'tempo', 'walker', 'truck', 'dog', 'dig']);
+    group('slow', R.slow, ['signal', 'pothole', 'dust']);
+    group('help', R.help, ['momo', 'helmet']);
+    const pd = mk('div', 'rule-block'); pd.appendChild(mk('h3', '', R.pointsT));
+    const pg = mk('div', 'points');
+    for (const p of R.pts) { const c = mk('div'); c.appendChild(mk('b', '', p[0])); c.appendChild(mk('span', '', p[1])); pg.appendChild(c); }
+    pd.appendChild(pg); box.appendChild(pd);
+    para(R.dailyT, R.daily);
+    $('langEn').setAttribute('aria-pressed', String(lang === 'en'));
+    $('langNe').setAttribute('aria-pressed', String(lang === 'ne'));
+    try { localStorage.setItem(KEY + '.lang', lang); } catch (e) { /* no storage */ }
+  }
+  $('langEn').addEventListener('click', () => renderRules('en'));
+  $('langNe').addEventListener('click', () => renderRules('ne'));
+  let savedLang = 'en';
+  try { if (localStorage.getItem(KEY + '.lang') === 'ne') savedLang = 'ne'; } catch (e) { /* no storage */ }
+  renderRules(savedLang);
+  if (API) {
+    loadGhosts();
+    const riders = $('riders');
+    const notice = 'Your name and rides are public: on the stats page and as a ghost scooter. We save no location.';
+    riders.textContent = notice;
+    riders.hidden = false;
+    $('nameRow').hidden = false;
+    const nameBox = $('riderName');
+    try { nameBox.value = localStorage.getItem(KEY + '.name') || ''; } catch (e) { /* no storage */ }
+    nameBox.addEventListener('input', () => { try { localStorage.setItem(KEY + '.name', nameBox.value); } catch (e) { /* no storage */ } });
+    fetch(API + '/stats').then(r => r.ok ? r.json() : null).then(s => {
+      if (s && s.today && s.today.players > 0) riders.textContent = s.today.players.toLocaleString('en-US') + (s.today.players === 1 ? ' rider' : ' riders') + ' on the road today. ' + notice;
+    }).catch(() => {});
+  }
+
+  /* The home screen shows a real road being ridden, warmed up so the first frame already has traffic */
+  loadSky(); rollDay(); refreshSide(); resize();
+  G = newGame(seedFor(todayNumber()) ^ 0xabc, true);
+  G.dist = 2.5 * PX_PER_KM;
+  G.road = makeRoad(seedFor(todayNumber()) ^ 0xabc);
+  G.gate = Math.ceil(G.dist / (SEG_KM * PX_PER_KM)) || 1;
+  for (let i = 0; i < 240; i++) update(G, 1 / 60);
+
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { if (G) render(G); });
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(.05, (now - last) / 1000); last = now;
+    if (mode === 'play') { if (freeze > 0) freeze -= dt; else update(G, dt); }
+    shake = Math.max(0, shake - dt);
+    if (mode === 'play') updateHud(G);
+    render(G);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  /* Used by road tests */
+  window.RingRoadRush = {
+    rows(seed, n) { const r = makeRoad(seed), out = []; for (let i = 0; i < n; i++) out.push(r.next()); return out; },
+    sim(seed, bot, maxKm) {
+      const g = newGame(seed, false); g.bot = bot;
+      while (!g.cause && kmOf(g) < maxKm) update(g, 1 / 60);
+      shake = 0;
+      return { km: +kmOf(g).toFixed(1), cause: g.cause, score: scoreOf(g), momos: g.momos, nears: g.nears };
+    },
+    setSky(phase, weather) { sky.phase = phase; sky.weather = weather; },
+    seedFor, todayNumber
+  };
+})();
+</script>
