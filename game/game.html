@@ -190,6 +190,15 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       </div>
     </section>
 
+    <section class="sheet" id="waySheet" hidden>
+      <h2>Level 1 done! Which way?</h2>
+      <p class="sub">Pick your road. Press ← or → on a computer.</p>
+      <div class="btns">
+        <button class="btn" id="wayWest" type="button">← West: Pokhara, Jomsom</button>
+        <button class="btn alt" id="wayEast" type="button">East → Birgunj, Birtamod</button>
+      </div>
+    </section>
+
     <section class="sheet" id="pauseSheet" hidden>
       <h2>Paused</h2>
       <p class="sub">The road waits for you. Traffic restarts when you continue.</p>
@@ -259,20 +268,35 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   const SEGS = STOPS.length, LAP_KM = 27, SEG_KM = LAP_KM / SEGS, PX_PER_KM = 3333;
   /* After the Ring Road the ride carries on across Nepal. Each stop is one 1.8 km segment. */
   const STAGES = [
-    { name: 'Ring Road', theme: 'city', stops: STOPS.slice(1).concat([STOPS[0]]) },
-    { name: 'Prithvi Highway', theme: 'hills', stops: [['Thankot', 'थानकोट'], ['Naubise', 'नौबिसे'], ['Malekhu', 'मलेखु'], ['Kurintar', 'कुरिनटार'], ['Mugling', 'मुग्लिङ'], ['Abu Khaireni', 'आबुखैरेनी'], ['Dumre', 'डुम्रे'], ['Damauli', 'दमौली'], ['Khairenitar', 'खैरेनीटार']] },
-    { name: 'Pokhara', theme: 'lake', stops: [['Prithvi Chowk', 'पृथ्वीचोक'], ['Mahendrapul', 'महेन्द्रपुल'], ['Lakeside', 'लेकसाइड'], ['Damside', 'दमसाइड'], ['Baidam', 'बैदाम'], ['Hemja', 'हेम्जा']] },
-    { name: 'Mountain road', theme: 'himal', stops: [['Naya Pul', 'नयाँपुल'], ['Beni', 'बेनी'], ['Tatopani', 'तातोपानी'], ['Ghasa', 'घाँसा'], ['Lete', 'लेते'], ['Marpha', 'मार्फा'], ['Jomsom', 'जोमसोम'], ['Kagbeni', 'कागबेनी'], ['Muktinath', 'मुक्तिनाथ']] }
+    { name: 'Ring Road', short: 'Ring Road', level: 1, theme: 'city', stops: STOPS.slice(1).concat([STOPS[0]]) },
+    { name: 'Prithvi Highway', short: 'Prithvi', level: 2, theme: 'hills', stops: [['Thankot', 'थानकोट'], ['Naubise', 'नौबिसे'], ['Malekhu', 'मलेखु'], ['Kurintar', 'कुरिनटार'], ['Mugling', 'मुग्लिङ'], ['Abu Khaireni', 'आबुखैरेनी'], ['Dumre', 'डुम्रे'], ['Damauli', 'दमौली'], ['Khairenitar', 'खैरेनीटार']] },
+    { name: 'Pokhara', short: 'Pokhara', level: 3, theme: 'lake', stops: [['Prithvi Chowk', 'पृथ्वीचोक'], ['Mahendrapul', 'महेन्द्रपुल'], ['Lakeside', 'लेकसाइड'], ['Damside', 'दमसाइड'], ['Baidam', 'बैदाम'], ['Hemja', 'हेम्जा']] },
+    { name: 'Mountain road', short: 'Jomsom', level: 4, theme: 'himal', stops: [['Naya Pul', 'नयाँपुल'], ['Beni', 'बेनी'], ['Tatopani', 'तातोपानी'], ['Ghasa', 'घाँसा'], ['Lete', 'लेते'], ['Marpha', 'मार्फा'], ['Jomsom', 'जोमसोम'], ['Kagbeni', 'कागबेनी'], ['Muktinath', 'मुक्तिनाथ']] },
+    { name: 'Terai to Birgunj', short: 'Birgunj', level: 2, theme: 'terai', stops: [['Narayanghat', 'नारायणघाट'], ['Bharatpur', 'भरतपुर'], ['Tandi', 'टाँडी'], ['Hetauda', 'हेटौंडा'], ['Amlekhgunj', 'अमलेखगञ्ज'], ['Simara', 'सिमरा'], ['Parwanipur', 'परवानीपुर'], ['Birgunj', 'वीरगञ्ज']] },
+    { name: 'Eastern Terai', short: 'Birtamod', level: 3, theme: 'tea', stops: [['Chandranigahapur', 'चन्द्रनिगाहपुर'], ['Bardibas', 'बर्दिबास'], ['Lahan', 'लहान'], ['Itahari', 'इटहरी'], ['Damak', 'दमक'], ['Birtamod', 'बिर्तामोड'], ['Kakarbhitta', 'काँकडभिट्टा']] }
   ];
-  const ROUTE = [];
-  STAGES.forEach((stage, si) => stage.stops.forEach((stop, idx) => ROUTE.push({ stop, stage, si, idx, last: idx === stage.stops.length - 1 })));
+  /* After the Ring Road the rider chooses: west (0) to the mountains, or south and east (1) through the Terai */
+  const WAYS = [[0, 1, 2, 3], [0, 4, 5]];
+  const ROUTES = WAYS.map(list => {
+    const out = [];
+    list.forEach(si => STAGES[si].stops.forEach((stop, idx) => out.push({ stop, stage: STAGES[si], si, idx, last: idx === STAGES[si].stops.length - 1 })));
+    return out;
+  });
+  let branch = 0;
+  const wayOf = si => (si === 4 || si === 5) ? 1 : 0;
   /* Stop k is reached after k segments. Stop 0 is the start at Koteshwor. */
-  const routeAt = k => ROUTE[(Math.max(1, k) - 1) % ROUTE.length];
+  const routeAt = k => ROUTES[branch][(Math.max(1, k) - 1) % ROUTES[branch].length];
   const stopAt = k => k <= 0 ? STOPS[0] : routeAt(k).stop;
   const stopName = k => stopAt(k)[0];
-  /* Each stage is a level. A level starts at the stop after the previous level's last stop. */
+  /* The stop each level starts from */
   const LEVEL_STOP = [];
-  STAGES.reduce((k, st, i) => { LEVEL_STOP[i] = k; return k + st.stops.length; }, 0);
+  WAYS.forEach(list => list.reduce((k, si) => { LEVEL_STOP[si] = k; return k + STAGES[si].stops.length; }, 0));
+  /* Some stretches have no tarmac at all */
+  const isOffRoad = px => {
+    if (px < 8000) return false;
+    const s = Math.sin(Math.floor(px / 3000) * 1.7 * 12.9898 + 9.3) * 43758.5453;
+    return s - Math.floor(s) > .8;
+  };
   const themeAtPx = px => routeAt(Math.floor(Math.max(0, px) / 3333 / SEG_KM) + 1).stage.theme;
 
   const CAUSES = {
@@ -284,6 +308,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     dig: ['Bato feri khaneko rahecha', 'The road was dug up again. Probably pipes.'],
     bike: ['Bike le side kaatyo', 'A bike cut in from nowhere.'],
     cycle: ['Cycle sanga pani haariyo', 'You lost to a cycle carrying saag.'],
+    wall: ['Bato sano thiyo', 'The road got narrow. The wall did not move.'],
+    bridge: ['Pul banda thiyo', 'The bridge was closed. It has been almost ready for years.'],
     walker: ['Zebra crossing ma manchhe thiyo', 'Someone was crossing the road. That one is on you.']
   };
 
@@ -310,9 +336,9 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   function rollDay() { const d = todayNumber(); if (save.day !== d) { save.day = d; save.best = null; save.tries = 0; } return d; }
 
   /* ---------- Sky: real Nepal time and Kathmandu weather. Looks only, no effect on the road or scoring. ---------- */
-  const SKY_PLACES = ['Kathmandu', 'Mugling', 'Pokhara', 'Jomsom'];
+  const SKY_PLACES = ['Kathmandu', 'Mugling', 'Pokhara', 'Jomsom', 'Birgunj', 'Birtamod'];
   const SKY_MODES = [['live', 'Live'], ['day', 'Sunny'], ['night', 'Night'], ['rain', 'Rain'], ['fog', 'Fog']];
-  const sky = { phase: 'day', codes: [null, null, null, null], mode: 'live' };
+  const sky = { phase: 'day', codes: [null, null, null, null, null, null], mode: 'live' };
   try { const m = localStorage.getItem(KEY + '.sky'); if (SKY_MODES.some(x => x[0] === m)) sky.mode = m; } catch (e) { /* no storage */ }
   function nepalPhase() {
     const h = new Date(Date.now() + NPT_MS).getUTCHours();
@@ -470,8 +496,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   function makeRoad(seed, level) {
     const rng = mulberry32(seed);
     const lv = level || 0, base = LEVEL_STOP[lv] * SEG_KM * PX_PER_KM;
-    const effKm = () => (at - base) / PX_PER_KM + lv * 9;
-    let at = base + 650, idx = 0, sinceHelmet = 0, sinceDig = 9, sinceDust = 0, sinceSignal = 3, sinceShelter = 5;
+    const effKm = () => (at - base) / PX_PER_KM + (STAGES[lv].level - 1) * 9;
+    let at = base + 650, idx = 0, sinceHelmet = 0, sinceDig = 9, sinceDust = 0, sinceSignal = 3, sinceShelter = 5, sinceBridge = 6, sinceJaam = 6, sinceNarrow = 4, sinceStream = 3;
     const pick = list => list[Math.floor(rng() * list.length)];
     const shuffled = () => { const a = [0, 1, 2, 3]; for (let i = 3; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
@@ -499,7 +525,9 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         const weights = [
           ['pothole', 2], ['cow', 2], ['tempo', km > .5 ? 2 : 0], ['micro', km > 2 ? 2 + d * 2 : 0],
           ['truck', km > 5 ? 1 + d : 0], ['dog', km > 3 ? 1 : 0],
-          ['bike', km > 1 ? 2 + d : 0], ['cycle', km > .3 ? 1.5 : 0], ['walker', km > 2 ? .7 : 0], ['signal', km > 2.5 && sinceSignal > 6 ? 2 : 0], ['dig', km > 6 && sinceDig > 4 ? 1 + d * 1.5 : 0],
+          ['bike', km > 1 ? 2 + d : 0], ['cycle', km > .3 ? 1.5 : 0], ['walker', km > 2 ? .7 : 0], ['signal', km > 2.5 && sinceSignal > 6 ? 2 : 0], ['bridge', km > 3.5 && sinceBridge > 12 ? 3 : 0],
+          ['hilo', km > 2 ? 1.6 : 0], ['stream', km > 1.5 && sinceStream > 6 && themeAtPx(at) !== 'city' ? 4 : 0],
+          ['jaam', km > 1.5 && sinceJaam > 14 ? 2.5 : 0], ['narrow', km > 3 && sinceNarrow > 10 ? 2 : 0], ['dig', km > 6 && sinceDig > 4 ? 1 + d * 1.5 : 0],
           ['double', km > 4 ? 1 + d * 2 : 0], ['dust', km > 8 && sinceDust > 10 ? .6 : 0]
         ];
         let total = 0; for (const w of weights) total += w[1];
@@ -507,8 +535,29 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         for (const w of weights) { roll -= w[1]; if (roll <= 0 && w[1] > 0) { kind = w[0]; break; } }
 
         const lanes = shuffled(), items = [];
-        let extra = 0;
-        if (kind === 'dig') {
+        let extra = 0, tail = 0;
+        if (kind === 'bridge') {
+          /* A warning board first, then the closed bridge with one dirt diversion lane */
+          sinceBridge = 0; extra = 120; tail = 640;
+          const open = lanes[3];
+          items.push({ t: 'bridgesign', deco: true, x: 200, w: 0, h: 0, rate: 1, open });
+          items.push({ t: 'bypass', deco: true, x: laneX(open), w: 0, h: 0, rate: 1, off: 500, open });
+          for (let i = 0; i < 3; i++) items.push({ t: 'bridge', x: laneX(lanes[i]), w: LANE_W, h: 44, rate: 1, off: 500 });
+        } else if (kind === 'hilo') {
+          items.push({ t: 'hilo', x: laneX(lanes[0]), w: 76, h: 54, rate: 1, soft: true });
+        } else if (kind === 'stream') {
+          /* Water coming down off the hill and across the road */
+          sinceStream = 0;
+          items.push({ t: 'stream', deco: true, x: 200, w: 0, h: 0, rate: 1 });
+        } else if (kind === 'jaam') {
+          sinceJaam = 0; extra = 140; tail = 200;
+          items.push({ t: 'jaam', deco: true, x: 200, w: 0, h: 0, rate: 1 });
+        } else if (kind === 'narrow') {
+          /* Walls close off both outside lanes; only the middle two stay open */
+          sinceNarrow = 0; extra = 120; tail = 800;
+          items.push({ t: 'roadsign', deco: true, x: 200, w: 0, h: 0, rate: 1, lines: ['Road narrows ahead', 'Keep to the middle'] });
+          for (const l of [0, 3]) items.push({ t: 'wall', x: laneX(l), w: LANE_W, h: 420, rate: 1, off: 460 });
+        } else if (kind === 'dig') {
           extra = 160; sinceDig = 0;
           for (let i = 0; i < 3; i++) items.push({ t: 'dig', x: laneX(lanes[i]), w: LANE_W, h: 34, rate: 1 });
         } else if (kind === 'truck') {
@@ -539,12 +588,12 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
           const count = 3 + Math.floor(rng() * 3);
           for (let i = 0; i < count; i++) items.push({ t: 'momo', x: laneX(free), w: 28, h: 24, rate: 1, off: 90 + i * 44 });
         }
-        sinceHelmet++; sinceDig++; sinceDust++; sinceSignal++; sinceShelter++; idx++;
-        if (sinceShelter > 8 && kind !== 'dig') { sinceShelter = 0; items.push({ t: 'shelter', x: laneX(free), w: LANE_W, h: 64, rate: 1, off: 150 }); }
+        sinceHelmet++; sinceDig++; sinceDust++; sinceSignal++; sinceShelter++; sinceBridge++; sinceJaam++; sinceNarrow++; sinceStream++; idx++;
+        if (sinceShelter > 8 && kind !== 'dig' && kind !== 'bridge' && kind !== 'narrow' && kind !== 'jaam') { sinceShelter = 0; items.push({ t: 'shelter', x: laneX(free), w: LANE_W, h: 64, rate: 1, off: 150 }); }
         if (sinceHelmet > 12 && rng() < .3) { sinceHelmet = 0; items.push({ t: 'helmet', x: laneX(lanes[2]), w: 30, h: 30, rate: 1, off: 60 }); }
 
         const row = { at: at + extra, kind, items };
-        at += extra + 330 + (1 - d) * 190 + rng() * 120;
+        at += extra + tail + 330 + (1 - d) * 190 + rng() * 120;
         return row;
       }
     };
@@ -777,14 +826,34 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       const lx = g.x, ly = py - 150, dark = ctx.createRadialGradient(lx, ly, 70, lx, ly, 460);
       dark.addColorStop(0, 'rgba(8,12,42,.05)'); dark.addColorStop(.45, 'rgba(8,12,42,.42)'); dark.addColorStop(1, 'rgba(8,12,42,.68)');
       ctx.fillStyle = dark; ctx.fillRect(0, 0, W, H);
-      const beam = ctx.createLinearGradient(0, py - 20, 0, py - 300);
-      beam.addColorStop(0, 'rgba(255,240,190,.3)'); beam.addColorStop(1, 'rgba(255,240,190,0)');
-      ctx.fillStyle = beam; ctx.beginPath(); ctx.moveTo(lx - 7, py - 24); ctx.lineTo(lx + 7, py - 24); ctx.lineTo(lx + 72, py - 300); ctx.lineTo(lx - 72, py - 300); ctx.fill();
     }
     if (skyNow.weather === 'fog') {
-      const fog = ctx.createLinearGradient(0, 0, 0, H * .55);
-      fog.addColorStop(0, 'rgba(205,212,220,.72)'); fog.addColorStop(.6, 'rgba(205,212,220,.4)'); fog.addColorStop(1, 'rgba(205,212,220,0)');
-      ctx.fillStyle = fog; ctx.fillRect(0, 0, W, H * .55);
+      const fog = ctx.createLinearGradient(0, 0, 0, H * .62);
+      fog.addColorStop(0, 'rgba(205,212,220,.72)'); fog.addColorStop(.6, 'rgba(205,212,220,.42)'); fog.addColorStop(1, 'rgba(205,212,220,0)');
+      ctx.fillStyle = fog; ctx.fillRect(0, 0, W, H * .62);
+    }
+    if (skyNow.weather === 'fog' || skyNow.weather === 'rain' || skyNow.phase === 'night') {
+      if (!g.attract) {
+        /* Headlight: a cone of light ahead of the scooter that cuts through fog and rain */
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        const lx = g.x, reach = py - 420;
+        const cone = ctx.createLinearGradient(0, py - 24, 0, reach);
+        cone.addColorStop(0, 'rgba(255,240,190,.42)'); cone.addColorStop(.6, 'rgba(255,240,190,.2)'); cone.addColorStop(1, 'rgba(255,240,190,0)');
+        ctx.fillStyle = cone; ctx.beginPath(); ctx.moveTo(lx - 7, py - 24); ctx.lineTo(lx + 7, py - 24); ctx.lineTo(lx + 92, reach); ctx.lineTo(lx - 92, reach); ctx.fill();
+        ctx.restore();
+      }
+      /* Tail lights and reflectors, so traffic shows up before you can see it clearly */
+      for (const o of g.objs) {
+        if (o.y < -20 || o.y > py + 40 || !o.h) continue;
+        const vehicle = o.t === 'micro' || o.t === 'tempo' || o.t === 'truck' || o.t === 'bike' || o.t === 'cycle';
+        if (!vehicle && o.t !== 'cow' && o.t !== 'dig' && o.t !== 'bridge') continue;
+        const by = o.y + o.h / 2 - 3, gap = Math.max(4, o.w / 2 - 5), col = vehicle ? '255,45,60' : '255,176,0';
+        for (const dx of o.w > 26 ? [-gap, gap] : [0]) {
+          const glow = ctx.createRadialGradient(o.x + dx, by, 1, o.x + dx, by, 12);
+          glow.addColorStop(0, 'rgba(' + col + ',.95)'); glow.addColorStop(.3, 'rgba(' + col + ',.5)'); glow.addColorStop(1, 'rgba(' + col + ',0)');
+          ctx.fillStyle = glow; ctx.fillRect(o.x + dx - 12, by - 12, 24, 24);
+        }
+      }
     }
     if (skyNow.weather === 'rain') {
       const t = reduced ? 400 : performance.now();
@@ -796,6 +865,89 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       }
       ctx.stroke();
     }
+  }
+  function drawBridge(c, o) {
+    c.save(); c.translate(o.x || 0, o.y || 0);
+    /* Barrier in front of the unfinished deck, with bare steel rods */
+    c.fillStyle = '#a9adb1'; c.fillRect(-o.w / 2 + 2, -22, o.w - 4, 26);
+    c.strokeStyle = '#5a4634'; c.lineWidth = 2; for (let i = 0; i < 6; i++) { c.beginPath(); c.moveTo(-o.w / 2 + 8 + i * 12, -22); c.lineTo(-o.w / 2 + 8 + i * 12, -36); c.stroke(); }
+    c.fillStyle = '#fff'; c.fillRect(-o.w / 2 + 2, 4, o.w - 4, 14);
+    c.fillStyle = '#dc143c'; for (let i = 0; i < 4; i++) c.fillRect(-o.w / 2 + 6 + i * 18, 4, 9, 14);
+    c.restore();
+  }
+  function drawBypass(c, o) {
+    c.save();
+    /* The river across the road, and the dirt diversion through the open lane */
+    c.fillStyle = '#3f8f9a'; c.fillRect(ROAD_L, o.y - 90, ROAD_R - ROAD_L, 66);
+    c.fillStyle = 'rgba(255,255,255,.4)'; for (let i = 0; i < 9; i++) c.fillRect(ROAD_L + 14 + i * 34, o.y - 70 + (i % 2) * 18, 16, 2);
+    c.fillStyle = '#8a6d49'; c.fillRect(laneX(o.open) - LANE_W / 2 + 2, o.y - 120, LANE_W - 4, 150);
+    c.fillStyle = '#27d17f'; const x = laneX(o.open), y = o.y - 40;
+    c.beginPath(); c.moveTo(x, y - 18); c.lineTo(x + 15, y); c.lineTo(x + 6, y); c.lineTo(x + 6, y + 16); c.lineTo(x - 6, y + 16); c.lineTo(x - 6, y); c.lineTo(x - 15, y); c.fill();
+    c.restore();
+  }
+  function drawBridgeSign(c, o) {
+    c.save();
+    const x = laneX(o.open), lane = o.open + 1;
+    c.fillStyle = '#ffb000'; rr(c, 92, o.y - 22, 216, 44, 4); c.fill();
+    c.strokeStyle = '#14151c'; c.lineWidth = 2; c.stroke();
+    c.fillStyle = '#14151c'; c.font = '800 14px Mukta, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('Bridge closed ahead', 200, o.y - 9); c.fillText('Use lane ' + lane, 200, o.y + 9);
+    c.fillStyle = '#27d17f'; c.beginPath(); c.moveTo(x, o.y + 28); c.lineTo(x + 13, o.y + 44); c.lineTo(x - 13, o.y + 44); c.fill();
+    c.restore();
+  }
+  function drawDirtIcon(c) {
+    c.fillStyle = '#8a6d49'; rr(c, -18, -14, 36, 28, 4); c.fill();
+    c.fillStyle = '#6f5637'; c.fillRect(-10, -14, 5, 28); c.fillRect(5, -14, 5, 28);
+    c.fillStyle = '#a58a66'; c.beginPath(); c.arc(-1, -4, 2.5, 0, 7); c.arc(13, 6, 2, 0, 7); c.fill();
+  }
+  function drawHilo(c, o) {
+    c.save(); c.translate(o.x || 0, o.y || 0);
+    const w = o.icon ? 18 : o.w / 2, h = o.icon ? 13 : o.h / 2;
+    c.fillStyle = '#6b4a2b'; c.beginPath(); c.ellipse(0, 0, w, h, 0, 0, 7); c.fill();
+    c.fillStyle = '#7f5a36'; c.beginPath(); c.ellipse(-w * .3, -h * .2, w * .55, h * .5, .3, 0, 7); c.fill();
+    c.fillStyle = 'rgba(200,220,235,.55)'; c.beginPath(); c.ellipse(w * .35, h * .25, w * .3, h * .22, 0, 0, 7); c.fill();
+    c.restore();
+  }
+  function drawStream(c, o) {
+    c.save();
+    const y = o.y || 0, t = reduced ? 0 : performance.now() * .05, x0 = o.icon ? -18 : ROAD_L - 8, wd = o.icon ? 36 : ROAD_R - ROAD_L + 16, h = o.icon ? 22 : 56;
+    c.fillStyle = '#4f9dbf'; c.fillRect(x0, y - h / 2, wd, h);
+    c.fillStyle = 'rgba(255,255,255,.62)';
+    for (let i = 0; i < (o.icon ? 3 : 12); i++) { const fx = (hash(i) * wd + t * (.7 + hash(i + 3))) % wd; c.fillRect(x0 + fx, y - h / 2 + 4 + hash(i + 8) * (h - 10), o.icon ? 7 : 22, 2); }
+    if (!o.icon) { c.fillStyle = '#6d6a62'; for (let i = 0; i < 6; i++) { c.beginPath(); c.arc(x0 + hash(i + 20) * wd, y - h / 2 + hash(i + 30) * h, 3 + hash(i) * 3, 0, 7); c.fill(); } }
+    c.restore();
+  }
+  function drawJaam(c, o) {
+    if (o.icon) { c.fillStyle = '#c21b3c'; rr(c, -16, -14, 13, 28, 3); c.fill(); c.fillStyle = '#f0f2f6'; rr(c, 3, -14, 13, 28, 3); c.fill(); return; }
+    /* A wall of stopped traffic across every lane */
+    const list = [drawMicro, drawTempo, drawMicro, drawTempo];
+    for (let l = 0; l < 4; l++) {
+      const proto = { x: laneX(l), y: o.y - 8 - (l % 2) * 16, w: 44, h: 80 };
+      list[(l + Math.floor(o.y0 || 0)) % 4](c, proto);
+      c.fillStyle = '#ff2d3c'; c.fillRect(proto.x - 18, proto.y + 28, 6, 4); c.fillRect(proto.x + 12, proto.y + 28, 6, 4);
+    }
+  }
+  function drawWall(c, o) {
+    c.save();
+    if (o.icon) { c.fillStyle = '#7a7a78'; c.fillRect(-18, -14, 10, 28); c.fillRect(8, -14, 10, 28); c.restore(); return; }
+    const x = o.x - o.w / 2 + 1, w = o.w - 2, top = o.y - o.h / 2;
+    c.fillStyle = '#7a7a78'; c.fillRect(x, top, w, o.h);
+    c.fillStyle = '#5c5c5a'; for (let r = 0; r * 22 < o.h; r++) for (let k = 0; k < 4; k++) c.fillRect(x + k * 20 + (r % 2) * 9, top + r * 22, 16, 18);
+    c.fillStyle = '#ff7a1a'; c.fillRect(o.x < 200 ? x + w - 6 : x, top, 6, o.h);
+    c.restore();
+  }
+  function drawRoadSign(c, o) {
+    c.save();
+    c.fillStyle = '#ffb000'; rr(c, 92, o.y - 22, 216, 44, 4); c.fill();
+    c.strokeStyle = '#14151c'; c.lineWidth = 2; c.stroke();
+    c.fillStyle = '#14151c'; c.font = '800 14px Mukta, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(o.lines[0], 200, o.y - 9); c.fillText(o.lines[1], 200, o.y + 9);
+    c.restore();
+  }
+  function drawBridgeIcon(c) {
+    c.fillStyle = '#3f8f9a'; c.fillRect(-18, 2, 36, 14);
+    c.fillStyle = '#a9adb1'; c.fillRect(-18, -8, 22, 10);
+    c.fillStyle = '#dc143c'; c.fillRect(-18, -14, 8, 6); c.fillRect(-4, -14, 8, 6);
   }
   function drawShelter(c, o) {
     c.save(); c.translate(o.x || 0, o.y || 0);
@@ -817,13 +969,32 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     c.fillStyle = '#c9a97a';
     for (const p of [[-10, 4, 11], [8, 5, 12], [0, -6, 13], [-16, -4, 7], [16, -4, 8]]) { c.beginPath(); c.arc(p[0], p[1], p[2], 0, 7); c.fill(); }
   }
-  const ART = { cow: drawCow, pothole: drawPothole, tempo: drawTempo, micro: drawMicro, truck: drawTruck, dog: drawDog, dig: drawDig, momo: drawMomo, helmet: drawHelmet, bike: drawBike, cycle: drawCycle, walker: drawWalker, signal: drawSignal, shelter: drawShelter };
+  const ART = { cow: drawCow, pothole: drawPothole, tempo: drawTempo, micro: drawMicro, truck: drawTruck, dog: drawDog, dig: drawDig, momo: drawMomo, helmet: drawHelmet, bike: drawBike, cycle: drawCycle, walker: drawWalker, signal: drawSignal, shelter: drawShelter, bridge: drawBridge, bypass: drawBypass, bridgesign: drawBridgeSign, hilo: drawHilo, stream: drawStream, jaam: drawJaam, wall: drawWall, roadsign: drawRoadSign };
 
-  const SHOULDER = { city: '#8f8a7c', hills: '#7a6a4f', lake: '#8f8a7c', himal: '#8a7c68' };
-  const ROAD_TONE = { city: '#3a3c48', hills: '#3f4049', lake: '#3c3f4c', himal: '#615a50' };
+  const SHOULDER = { city: '#8f8a7c', hills: '#7a6a4f', lake: '#8f8a7c', himal: '#8a7c68', terai: '#9a8a62', tea: '#8c7f5c' };
+  const ROAD_TONE = { city: '#3a3c48', hills: '#3f4049', lake: '#3c3f4c', himal: '#615a50', terai: '#454650', tea: '#41434d' };
+  function jharna(bx, bw, y, h, n) {
+    /* A waterfall coming off the cliff, with a small pool at the bottom */
+    const cx = bx + bw * (.3 + hash(n * 11) * .4), t = reduced ? 0 : performance.now() * .16;
+    ctx.fillStyle = '#5f574c'; ctx.fillRect(bx, y + 10, bw, h - 42);
+    ctx.fillStyle = '#d9f1fb'; ctx.fillRect(cx - 7, y + 10, 14, h - 40);
+    ctx.fillStyle = '#ffffff'; for (let i = 0; i < 6; i++) ctx.fillRect(cx - 5 + (i % 3) * 4, y + 10 + (t + i * 19) % (h - 44), 2, 14);
+    ctx.fillStyle = '#4f9dbf'; ctx.beginPath(); ctx.ellipse(cx, y + h - 26, 15, 9, 0, 0, 7); ctx.fill();
+  }
   function drawSide(theme, bx, bw, y, h, n, side) {
     const inner = side ? bx : bx + bw - 7;
-    if (theme === 'city') {
+    if (theme === 'terai') {
+      /* Flat rice fields, with mustard and the odd tree */
+      ctx.fillStyle = hash(n * 3) > .7 ? '#d8b92f' : '#6faa45'; ctx.fillRect(bx, y, bw, h);
+      ctx.fillStyle = 'rgba(30,70,20,.3)'; for (let s = 0; s < 3; s++) ctx.fillRect(bx + 4 + s * 11, y, 2, h);
+      ctx.fillStyle = 'rgba(60,40,20,.55)'; ctx.fillRect(bx, y + h - 3, bw, 3);
+      if (hash(n * 5) > .55) { ctx.fillStyle = '#2f6a31'; ctx.beginPath(); ctx.arc(bx + 8 + hash(n) * (bw - 16), y + 30 + hash(n * 2) * 80, 11, 0, 7); ctx.fill(); }
+    } else if (theme === 'tea') {
+      /* Rows of tea bushes */
+      ctx.fillStyle = '#3f7a42'; ctx.fillRect(bx, y, bw, h);
+      ctx.fillStyle = '#2f6235'; for (let r = 0; r < 7; r++) { ctx.beginPath(); ctx.ellipse(bx + bw / 2, y + 10 + r * 21, bw / 2 - 2, 6, 0, 0, 7); ctx.fill(); }
+      if (hash(n * 5) > .78) { ctx.fillStyle = '#c21b3c'; ctx.beginPath(); ctx.arc(bx + bw / 2, y + 60, 4, 0, 7); ctx.fill(); }
+    } else if (theme === 'city') {
       ctx.fillStyle = BUILD[Math.floor(hash(n) * BUILD.length)]; ctx.fillRect(bx, y, bw, h);
       ctx.fillStyle = 'rgba(20,20,30,.45)'; ctx.fillRect(bx, y + h - 2, bw, 2);
       ctx.fillStyle = hash(n * 7) > .5 ? '#55606f' : '#23408c'; ctx.fillRect(inner, y + 22, 7, 100);
@@ -841,6 +1012,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         ctx.strokeStyle = 'rgba(30,60,30,.55)'; ctx.lineWidth = 2;
         for (let s = 0; s < 6; s++) { ctx.beginPath(); ctx.moveTo(bx, y + 12 + s * 25); ctx.quadraticCurveTo(bx + bw / 2, y + 2 + s * 25, bx + bw, y + 14 + s * 25); ctx.stroke(); }
         ctx.fillStyle = '#2f5a31'; ctx.beginPath(); ctx.arc(bx + 6 + hash(n) * (bw - 12), y + 40 + hash(n * 2) * 70, 8, 0, 7); ctx.fill();
+        if (hash(n * 8) > .78) jharna(bx, bw, y, h, n);
       }
     } else if (theme === 'lake') {
       if (side) {
@@ -868,6 +1040,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         ctx.fillStyle = '#f4f1e6'; ctx.fillRect(cx - 8, cy - 2, 16, 12); ctx.beginPath(); ctx.arc(cx, cy - 2, 7, 0, 7); ctx.fill();
         ctx.fillStyle = '#c2852f'; ctx.fillRect(cx - 1.5, cy - 15, 3, 8);
       }
+      if (hash(n * 8) > .62) jharna(bx, bw, y, h, n);
     }
     ctx.fillStyle = SHOULDER[theme];
     ctx.fillRect(side ? ROAD_R : ROAD_L - 8, y, 8, h);
@@ -889,9 +1062,17 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       ctx.fillStyle = '#eef3f7'; ctx.beginPath(); ctx.moveTo(110, band - 20); ctx.lineTo(196, 34); ctx.lineTo(208, 50); ctx.lineTo(220, 30); ctx.lineTo(300, band - 20); ctx.fill();
       ctx.fillStyle = '#b9c7d4'; ctx.beginPath(); ctx.moveTo(208, 50); ctx.lineTo(300, band - 20); ctx.lineTo(220, band - 20); ctx.fill();
       ridge(band - 8, 26, 38, '#4f7d45', 2);
+    } else if (theme === 'terai') {
+      ctx.fillStyle = '#b5d9ec'; ctx.fillRect(0, 0, W, band);
+      ridge(band - 14, 16, 58, '#8fae8a', 1); ctx.fillStyle = '#6faa45'; ctx.fillRect(0, band - 14, W, 14);
+    } else if (theme === 'tea') {
+      ctx.fillStyle = '#b5d9ec'; ctx.fillRect(0, 0, W, band);
+      ridge(band - 18, 22, 52, '#6d9c70', 1); ridge(band - 4, 16, 36, '#3f7a42', 2);
     } else {
       ctx.fillStyle = '#7fb4dc'; ctx.fillRect(0, 0, W, band);
       ridge(band - 12, 76, 62, '#eef3f7', 0); ridge(band - 2, 34, 40, '#8b8173', 2);
+      /* Waterfalls running down the far cliffs */
+      ctx.fillStyle = 'rgba(235,248,255,.95)'; for (const x of [70, 318]) ctx.fillRect(x, band - 44, 5, 40);
     }
     const fade = ctx.createLinearGradient(0, band - 22, 0, band + 6);
     fade.addColorStop(0, 'rgba(58,60,72,0)'); fade.addColorStop(1, ROAD_TONE[theme]);
@@ -904,6 +1085,13 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     for (let i = first; i < first + rows; i++) {
       const y = dist - i * blockH + H - blockH, r = hash(i * 3.3), theme = themeRow(i);
       ctx.fillStyle = ROAD_TONE[theme]; ctx.fillRect(ROAD_L, y, ROAD_R - ROAD_L, blockH + 1);
+      if (isOffRoad(i * blockH + blockH - 110)) {
+        /* Dirt road: two wheel ruts and loose stones */
+        ctx.fillStyle = '#8a6d49'; ctx.fillRect(ROAD_L, y, ROAD_R - ROAD_L, blockH + 1);
+        ctx.fillStyle = '#6f5637'; for (let l = 0; l < 4; l++) { ctx.fillRect(laneX(l) - 20, y, 8, blockH + 1); ctx.fillRect(laneX(l) + 12, y, 8, blockH + 1); }
+        ctx.fillStyle = '#a58a66'; for (let k = 0; k < 12; k++) { ctx.beginPath(); ctx.arc(ROAD_L + hash(i + k * 3.1) * (ROAD_R - ROAD_L), y + hash(i * 2 + k) * blockH, 2 + hash(k + i) * 3, 0, 7); ctx.fill(); }
+        continue;
+      }
       if (r > .55) { ctx.fillStyle = r > .8 ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.04)'; ctx.fillRect(ROAD_L + hash(i) * 200, y, 60 + hash(i * 2) * 60, 46 + hash(i * 5) * 50); }
     }
     /* lane paint, fading in places as it does on the real road */
@@ -912,6 +1100,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       const x = ROAD_L + LANE_W * l;
       for (let y = -dash + off; y < H; y += dash) {
         const n = Math.floor((dist - y) / dash);
+        if (isOffRoad(dist + (H - 110) - y)) continue;
         ctx.fillStyle = 'rgba(240,235,215,' + (l === 2 ? .75 : .1 + hash(n + l * 91) * .5) + ')';
         ctx.fillRect(x - 2, y, 4, 34);
       }
@@ -973,13 +1162,13 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   }
   const kmOf = g => g.dist / PX_PER_KM;
   const scoreOf = g => Math.max(0, Math.floor((kmOf(g) - g.startKm) * 100) + g.momos * 25 + g.nears * 10 + g.greens * 20 + (g.coats || 0) * 25 - g.fines * 100);
-  const speedOf = g => speedAt(kmOf(g) - g.startKm + g.level * 9);
+  const speedOf = g => speedAt(kmOf(g) - g.startKm + (STAGES[g.level].level - 1) * 9);
   function speedAt(km) { return 270 + 300 * Math.min(1, km / LAP_KM) + (km > LAP_KM ? Math.min(150, (km - LAP_KM) * 10) : 0); }
   const laneIndex = x => Math.max(0, Math.min(3, Math.round((x - laneX(0)) / LANE_W)));
   function stepLane(g, d) { g.target = laneX(Math.max(0, Math.min(3, laneIndex(g.target) + d))); }
   function float(g, x, y, txt, color) { g.floats.push({ x, y, txt, color: color || '#fff4dc', life: 1 }); }
 
-  const TRAFFIC_BLOCKS = { micro: 1, tempo: 1, truck: 1, bike: 1, cycle: 1, cow: 1, dig: 1 };
+  const TRAFFIC_BLOCKS = { micro: 1, tempo: 1, truck: 1, bike: 1, cycle: 1, cow: 1, dig: 1, bridge: 1, wall: 1 };
   function spawn(g) {
     if (!g.row) g.row = g.road.next();
     while (g.dist >= g.row.at) {
@@ -996,7 +1185,15 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     const km = kmOf(g), py = playerY();
     g.slow = Math.min(1, g.slow + dt * .42);
     const crashed = !!g.cause;
-    const v = crashed ? Math.max(0, speedOf(g) * (1 - g.crashT / .35)) : speedOf(g) * g.slow;
+    const dirt = isOffRoad(g.dist);
+    g.surf = (g.surf === undefined ? 1 : g.surf) + ((dirt ? .6 : 1) - (g.surf === undefined ? 1 : g.surf)) * Math.min(1, dt * 3);
+    if (dirt && !g.dirtTold && !g.attract) { g.dirtTold = true; float(g, 200, H * .3, 'Kachhi bato! Ride slow', '#ffe7b0'); }
+    if (!dirt) g.dirtTold = false;
+    if (g.jam > 0) {
+      g.jam -= dt;
+      if (g.jam <= 0) { for (const o of g.objs) if (o.t === 'jaam') o.gone = true; g.jamText = 0; if (!g.attract) sfx.green(); }
+    }
+    const v = g.jam > 0 ? 0 : crashed ? Math.max(0, speedOf(g) * (1 - g.crashT / .35)) : speedOf(g) * g.slow * g.surf;
     g.dist += v * dt;
     spawn(g);
 
@@ -1006,7 +1203,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       g.think = (g.think || 0) - dt;
       if (g.think <= 0) {
         g.think = B.every;
-        const near = g.objs.filter(o => o.t !== 'momo' && o.t !== 'helmet' && o.t !== 'signal' && o.t !== 'shelter' && o.y > py - B.look && o.y < py + 60);
+        const near = g.objs.filter(o => o.t !== 'momo' && o.t !== 'helmet' && o.t !== 'signal' && o.t !== 'shelter' && !o.deco && o.y > py - B.look && o.y < py + 60);
         const light = g.objs.find(o => o.t === 'signal' && !o.checked && o.y > py - B.look);
         let bestLane = 1, bestCost = 1e9;
         for (let l = 0; l < 4; l++) {
@@ -1049,7 +1246,11 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       g.banner = here.last ? 3.5 : 1.5; g.bannerI = g.gate;
       if (!g.attract) {
         sfx.stop();
-        if (here.last && !g.bot && here.si + 1 < STAGES.length && (save.unlocked || 0) < here.si + 1) { save.unlocked = here.si + 1; persist(); }
+        if (here.last && !g.bot) {
+          if (here.si === 0) { openStage(1); openStage(4); }
+          else { const next = routeAt(g.gate + 1).si; if (next !== 0) openStage(next); }
+          if (here.si === 0 && g.level === 0) wantWay = true;
+        }
       }
       g.gate++;
     }
@@ -1079,7 +1280,13 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         const step = 150 * dt, gap = o.toX - o.x;
         if (Math.abs(gap) <= step) { o.x = o.toX; o.blink = false; } else o.x += Math.sign(gap) * step;
       }
-      if (g.attract || crashed || o.gone) continue;
+      if (o.t === 'stream' && !o.crossed && o.y >= py && !g.attract && !crashed) {
+        o.crossed = true; g.slow = Math.min(g.slow, .72); sfx.bump(); float(g, g.x, py - 44, 'Khola! Splash', '#bfe7ff');
+      }
+      if (o.t === 'jaam' && !o.held && o.y >= py - 118 && !g.attract && !crashed) {
+        o.held = true; g.jam = 3; sfx.bump(); if (!reduced) shake = .12;
+      }
+      if (g.attract || crashed || o.gone || o.deco) continue;
 
       const hit = Math.abs(o.x - g.x) < (o.w * .8 + pw) / 2 && Math.abs(o.y - py) < (o.h * .82 + ph) / 2;
       if (o.t === 'shelter') {
@@ -1096,7 +1303,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       } else if (o.t === 'helmet') {
         if (hit) { o.gone = true; g.shield = true; sfx.helmet(); float(g, o.x, o.y - 20, 'Helmet on', '#ffb000'); }
       } else if (o.soft) {
-        if (hit && !o.struck) { o.struck = true; g.slow = .55; g.wobble = 1.1; sfx.bump(); if (!reduced) shake = .22; float(g, o.x, o.y - 20, 'Khaldo! Hold on!', '#ffe7b0'); }
+        if (hit && !o.struck) { o.struck = true; const mud = o.t === 'hilo'; g.slow = mud ? .7 : .55; g.wobble = mud ? 1.5 : 1.1; sfx.bump(); if (!reduced) shake = .22; float(g, o.x, o.y - 20, mud ? 'Hilo bato! Slipping' : 'Khaldo! Hold on!', '#ffe7b0'); }
       } else {
         if (hit && g.inv <= 0) {
           if (g.shield) { g.shield = false; g.inv = 1.2; o.gone = true; sfx.helmet(); float(g, g.x, py - 44, 'Helmet le bachayo!', '#ffb000'); }
@@ -1129,7 +1336,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     ctx.save();
     if (shake > 0) ctx.translate((hash(performance.now()) - .5) * 12 * shake * 2, (hash(performance.now() + 7) - .5) * 12 * shake * 2);
     drawScenery(g.dist);
-    const py = playerY(), order = { shelter: 0, walker: 0, pothole: 0, momo: 1, helmet: 1, dig: 2, dog: 3, cow: 3, cycle: 3, bike: 4, tempo: 4, micro: 4, truck: 5, signal: 6 };
+    const py = playerY(), order = { stream: -2, wall: -1, hilo: 0, roadsign: 0, jaam: 4, bypass: -1, bridgesign: 0, bridge: 2, shelter: 0, walker: 0, pothole: 0, momo: 1, helmet: 1, dig: 2, dog: 3, cow: 3, cycle: 3, bike: 4, tempo: 4, micro: 4, truck: 5, signal: 6 };
     /* painted gate on the road, behind traffic */
     for (let i = g.gate - 1; i <= g.gate + 1; i++) if (i > 0) drawGate(i, py - (i * SEG_KM * PX_PER_KM - g.dist));
     renderGhosts(g, py);
@@ -1140,7 +1347,12 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       ctx.save(); ctx.translate(g.x, py); ctx.rotate(Math.min(1.3, g.crashT * 5)); ctx.translate(-g.x, -py);
       drawPlayer(ctx, g.x, py, 0, false, false, g.coat); ctx.restore();
     } else {
-      const tilt = g.wobble > 0 && !reduced ? Math.sin(g.t * 19) * .42 * Math.min(1, g.wobble) : Math.max(-.32, Math.min(.32, g.vx / 900));
+      const onDirt = isOffRoad(g.dist);
+      if (onDirt && !reduced) {
+        ctx.fillStyle = 'rgba(190,160,120,.4)';
+        for (let i = 0; i < 4; i++) { const f = (g.t * 3 + i * .25) % 1; ctx.beginPath(); ctx.arc(g.x + Math.sin(i * 7 + g.t * 3) * 7, py + 30 + f * 34, 3 + f * 7, 0, 7); ctx.fill(); }
+      }
+      const tilt = g.wobble > 0 && !reduced ? Math.sin(g.t * 19) * .42 * Math.min(1, g.wobble) : Math.max(-.32, Math.min(.32, g.vx / 900)) + (onDirt && !reduced ? Math.sin(g.t * 34) * .05 : 0);
       drawPlayer(ctx, g.x, py, tilt, g.shield, g.inv > 0, g.coat);
       const myName = !g.attract && riderName();
       if (myName) {
@@ -1166,7 +1378,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       const text = freeze > .7 ? String(Math.ceil(freeze - .7)) : 'Jaau!';
       ctx.font = '400 72px "Rozha One", serif'; ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(9,18,56,.9)';
       ctx.strokeText(text, 200, H * .4); ctx.fillStyle = '#ffb000'; ctx.fillText(text, 200, H * .4);
-      const lvl = 'Level ' + (g.level + 1) + ': ' + STAGES[g.level].name;
+      const lvl = 'Level ' + STAGES[g.level].level + ': ' + STAGES[g.level].name;
       ctx.font = '400 28px "Rozha One", serif'; ctx.lineWidth = 6;
       ctx.strokeText(lvl, 200, H * .4 - 66); ctx.fillStyle = '#fff4dc'; ctx.fillText(lvl, 200, H * .4 - 66);
       if (showHint) {
@@ -1175,16 +1387,20 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         ctx.strokeText(hint, 200, H * .4 + 62); ctx.fillStyle = '#fff4dc'; ctx.fillText(hint, 200, H * .4 + 62);
       }
     }
+    if (g.jam > 0) {
+      const msg = 'Jaam! Wait ' + Math.ceil(g.jam);
+      ctx.font = '800 18px Mukta, sans-serif'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(9,18,56,.9)';
+      ctx.strokeText(msg, 200, py - 150); ctx.fillStyle = '#ffb000'; ctx.fillText(msg, 200, py - 150);
+    }
     if (g.banner > 0 && !g.attract) {
       const here = routeAt(g.bannerI), s = here.stop;
-      const nextStage = STAGES[(here.si + 1) % STAGES.length];
+      const nextStage = routeAt(g.bannerI + 1).stage;
       ctx.globalAlpha = Math.min(1, g.banner * 1.8);
       ctx.font = '400 34px "Rozha One", serif'; ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(9,18,56,.9)';
       ctx.strokeText(s[1], 200, 104); ctx.fillStyle = '#ffb000'; ctx.fillText(s[1], 200, 104);
       ctx.font = '800 16px Mukta, sans-serif'; ctx.strokeText(s[0], 200, 136); ctx.fillStyle = '#fff4dc'; ctx.fillText(s[0], 200, 136);
       if (here.last) {
-        const nextNum = (here.si + 1) % STAGES.length + 1;
-        const line = 'Level ' + (here.si + 1) + ' done! Level ' + nextNum + ': ' + nextStage.name;
+        const line = here.si === 0 ? 'Level 1 done!' : 'Level ' + here.stage.level + ' done! Next: ' + nextStage.name;
         ctx.strokeText(line, 200, 164); ctx.fillStyle = '#ffb000'; ctx.fillText(line, 200, 164);
       }
       ctx.globalAlpha = 1;
@@ -1194,7 +1410,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
 
   /* ---------- DOM ---------- */
   const $ = id => document.getElementById(id);
-  const ui = { hud: $('hud'), home: $('home'), result: $('result'), pause: $('pauseSheet') };
+  const ui = { hud: $('hud'), home: $('home'), result: $('result'), pause: $('pauseSheet'), way: $('waySheet') };
   const stage = $('stage');
   const track = $('hudTrack');
   for (let i = 0; i < SEGS; i++) track.appendChild(document.createElement('i'));
@@ -1210,7 +1426,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     $('hudScore').textContent = scoreOf(g).toLocaleString('en-US');
     $('hudHelmet').hidden = !g.shield;
     const { stage, done } = progressAt(km);
-    $('hudStage').textContent = 'Level ' + (STAGES.indexOf(stage) + 1);
+    $('hudStage').textContent = 'Level ' + stage.level;
     while (track.children.length > stage.stops.length) track.lastChild.remove();
     while (track.children.length < stage.stops.length) track.appendChild(document.createElement('i'));
     Array.from(track.children).forEach((el, i) => { el.className = i < done ? 'done' : i === done ? 'now' : ''; });
@@ -1247,7 +1463,9 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     const sm = el('text', { x: cx, y: cy + 24, 'text-anchor': 'middle', class: 'small' }); sm.textContent = 'one lap';
   }
 
-  let startLevel = 0;
+  let startLevel = 0, wantWay = false;
+  function isOpen(si) { return si === 0 || (save.opened || []).includes(si); }
+  function openStage(si) { if (!isOpen(si)) { save.opened = (save.opened || []).concat([si]); persist(); showLevels(); } }
   function pickRow(box, label, items, isOn, onPick) {
     box.textContent = '';
     const l = document.createElement('span'); l.textContent = label; box.appendChild(l);
@@ -1261,10 +1479,9 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     box.hidden = false;
   }
   function showLevels() {
-    const top = save.unlocked || 0;
-    const items = STAGES.map((st, i) => ({ i, text: 'Level ' + (i + 1), title: i > top ? st.name + ': finish the level before it to unlock' : st.name, locked: i > top }));
+    const items = STAGES.map((st, i) => ({ i, text: st.level + '. ' + st.short, title: isOpen(i) ? st.name : st.name + ': finish the level before it to unlock', locked: !isOpen(i) }));
     for (const id of ['levelsHome', 'levelsResult']) {
-      pickRow($(id), 'Start from:', items, it => it.i === startLevel, it => { startLevel = it.i; showLevels(); refreshSide(); });
+      pickRow($(id), 'Start from:', items, it => it.i === startLevel, it => { startLevel = it.i; branch = wayOf(it.i); showLevels(); refreshSide(); });
     }
     const skyItems = SKY_MODES.map(m => ({ key: m[0], text: m[1] }));
     for (const id of ['skyHome', 'skyResult']) {
@@ -1278,7 +1495,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   /* Route map for whichever level a distance falls in: the ring for Level 1, a road line for the others */
   function drawMap(km) {
     const { here, stage, done } = progressAt(km), si = here.si;
-    $('sideTitle').textContent = 'Level ' + (si + 1) + ': ' + stage.name;
+    $('sideTitle').textContent = 'Level ' + stage.level + ': ' + stage.name;
     if (si === 0) { drawRing(km); return; }
     const svg = $('ring'), ns = 'http://www.w3.org/2000/svg', n = stage.stops.length;
     svg.textContent = '';
@@ -1311,7 +1528,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     $('sideStreak').textContent = save.streak;
     /* Show the chosen level, with progress if today's best ride got into it */
     const levelKm = LEVEL_STOP[startLevel] * SEG_KM, levelEnd = levelKm + STAGES[startLevel].stops.length * SEG_KM;
-    drawMap(mode === 'play' && G ? kmOf(G) : best && best.km >= levelKm && best.km < levelEnd ? best.km : levelKm);
+    drawMap(mode === 'play' && G ? kmOf(G) : best && (best.way || 0) === branch && best.km >= levelKm && best.km < levelEnd ? best.km : levelKm);
   }
 
   function fillCells(container, km) {
@@ -1327,7 +1544,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   function routeText(km, level) {
     const seg = Math.floor(km / SEG_KM);
     if (level > 0) {
-      const name = 'Level ' + (level + 1) + ', ' + STAGES[level].name;
+      const name = 'Level ' + STAGES[level].level + ', ' + STAGES[level].name;
       return seg > LEVEL_STOP[level] ? name + ': reached ' + stopName(seg) : name + ': crashed before the first stop';
     }
     if (seg < 1) return 'Did not leave Koteshwor, ' + km.toFixed(1) + ' km';
@@ -1339,11 +1556,14 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
 
   function shareText() {
     const b = save.best; if (!b) return '';
+    const keepWay = branch; branch = b.way || 0;
     const { stage, done } = progressAt(b.km);
     let grid = '';
     for (let i = 0; i < stage.stops.length; i++) grid += i < done ? '🟩' : i === done ? '🟥' : '⬜';
+    const routeLine = routeText(b.km, b.level || 0);
+    branch = keepWay;
     return 'Ring Road Rush #' + (save.day - LAUNCH + 1) + ' 🛵 Try ' + save.tries + '\n'
-      + routeText(b.km, b.level || 0) + '\n' + grid + '\n'
+      + routeLine + '\n' + grid + '\n'
       + '🥟 ' + b.momos + ' · ' + b.score.toLocaleString('en-US') + ' pts\n'
       + CAUSES[b.cause][0]
       + (API ? '\nBeat me: ' + location.origin : '');
@@ -1357,6 +1577,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     if (save.lastDay !== day) { save.streak = save.lastDay === day - 1 ? save.streak + 1 : 1; save.lastDay = day; }
     save.tries++; persist(); refreshSide();
     sendEvent('start');
+    branch = wayOf(startLevel);
     /* First ride of the day is the same road for everyone; each retry shuffles the traffic */
     G = newGame((seedFor(day) ^ Math.imul(save.tries - 1, 0x9e3779b1) ^ Math.imul(startLevel, 0x85ebca6b)) >>> 0, false, startLevel);
     const me = API ? getPlayerId().slice(0, 4) : '';
@@ -1373,6 +1594,14 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     canvas.focus({ preventScroll: true });
   }
 
+  function chooseWay(w) {
+    if (mode !== 'choice') return;
+    branch = w; mode = 'play'; freeze = 1.7;
+    ui.way.hidden = true;
+    stage.classList.add('playing');
+    canvas.focus({ preventScroll: true });
+    drawMap(kmOf(G));
+  }
   function pause() {
     if (mode !== 'play' || G.cause) return;
     leaveLive();
@@ -1399,7 +1628,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   function endRun(g) {
     mode = 'result'; showHint = false;
     stage.classList.remove('playing');
-    const km = kmOf(g), score = scoreOf(g), run = { score, km, momos: g.momos, cause: g.cause, level: g.level };
+    const km = kmOf(g), score = scoreOf(g), run = { score, km, momos: g.momos, cause: g.cause, level: g.level, way: branch };
     const newBest = !save.best || score > save.best.score;
     if (newBest) save.best = run;
     persist(); refreshSide();
@@ -1415,7 +1644,9 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     fillCells($('resCells'), km);
     $('resRoute').textContent = routeText(km, g.level) + ' · Rode for ' + clock(g.t);
     /* Next ride starts from the level you reached, or pick an earlier one */
-    startLevel = Math.min(save.unlocked || 0, progressAt(km).here.si);
+    const reachedStage = progressAt(km).here.si;
+    if (isOpen(reachedStage)) startLevel = reachedStage;
+    save.lastStage = startLevel; persist();
     showLevels();
     refreshSide();
     drawMap(km);
@@ -1440,6 +1671,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     else if (!nameMissing('riderName', 'nameErr')) start();
   });
   $('retryBtn').addEventListener('click', () => { if (!nameMissing('riderName2', 'nameErr2')) start(); });
+  $('wayWest').addEventListener('click', () => chooseWay(0));
+  $('wayEast').addEventListener('click', () => chooseWay(1));
   $('pauseBtn').addEventListener('click', pause);
   $('resumeBtn').addEventListener('click', resume);
   $('pauseRulesBtn').addEventListener('click', () => showRules('pause'));
@@ -1458,6 +1691,11 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   /* ---------- Input ---------- */
   addEventListener('keydown', e => {
     if (e.target && e.target.tagName === 'INPUT' && e.target.type === 'text') return;
+    if (mode === 'choice') {
+      if (e.key === 'ArrowLeft') chooseWay(0);
+      if (e.key === 'ArrowRight') chooseWay(1);
+      return;
+    }
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { keys.left = true; if (mode === 'play') { e.preventDefault(); if (!e.repeat) stepLane(G, -1); } }
     if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { keys.right = true; if (mode === 'play') { e.preventDefault(); if (!e.repeat) stepLane(G, 1); } }
     if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') { if (mode === 'play') pause(); else if (mode === 'paused' && !ui.pause.hidden) resume(); }
@@ -1511,15 +1749,21 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     cow: [drawCow, { w: 60, h: 34 }, .9], micro: [drawMicro, { w: 52, h: 90 }, .62], tempo: [drawTempo, {}, .9],
     truck: [drawTruck, {}, .36], dog: [drawDog, { dogV: 1 }, 1.2], dig: [drawDig, { w: 78, h: 34 }, .7],
     bike: [drawBike, {}, 1.3], cycle: [drawCycle, {}, 1.3], walker: [drawWalker, { icon: true }, 1.6], signal: [drawSignal, { icon: true }, .9],
-    shelter: [drawShelter, { icon: true }, .8], pothole: [drawPothole, {}, 1], dust: [drawDust, {}, 1], momo: [drawMomo, {}, 1.5], helmet: [drawHelmet, {}, 1.4]
+    bridge: [drawBridgeIcon, {}, 1.2], dirt: [drawDirtIcon, {}, 1.2], hilo: [drawHilo, { icon: true }, 1.1], stream: [drawStream, { icon: true }, 1], jaam: [drawJaam, { icon: true }, 1], wall: [drawWall, { icon: true }, 1], shelter: [drawShelter, { icon: true }, .8], pothole: [drawPothole, {}, 1], dust: [drawDust, {}, 1], momo: [drawMomo, {}, 1.5], helmet: [drawHelmet, {}, 1.4]
   };
   const RULES = {
     en: {
-      goalT: 'Your goal', goal: 'Ride as far as you can. Your scooter moves by itself and gets faster, so you only steer. Level 1 is the 27 km Ring Road. Finish it and Level 2 starts: Prithvi Highway, then Pokhara, then the mountain road to Muktinath. After a crash you can restart from any level you have reached. The weather is live for each place, and you can pick your own look.',
+      goalT: 'Your goal', goal: 'Ride as far as you can. Your scooter moves by itself and gets faster, so you only steer. Level 1 is the 27 km Ring Road. Finish it and you choose your way: west to Pokhara, Jomsom and Muktinath, or east through the Terai to Birgunj, Birtamod and Kakarbhitta. After a crash you can restart from any level you have reached. The weather is live for each place, and you can pick your own look.',
       steerT: 'How to steer', steer: 'The road has 4 lanes. On a phone, tap the left or right side of the screen, or swipe, to move one lane. On a computer, press ← → or A and D. Press P to pause.',
       ghostT: 'Other riders', ghost: "Anyone riding right now is listed at the top of the road. When they are near you on the road, you see a small blue scooter with their name and a green dot. Other small scooters are recordings of today's best rides. None of them can hit you.",
       stop: 'Hit one and your ride ends', slow: 'These make it harder', help: 'These help you',
       items: {
+        bridge: ['Closed bridge', 'A sign tells you which lane has the diversion'],
+        dirt: ['Off-road', 'No tarmac, so you ride much slower'],
+        hilo: ['Hilo bato', 'Mud makes the scooter slip'],
+        stream: ['Khola on the road', 'Water from the hills slows you'],
+        jaam: ['Jaam', 'Traffic blocks the road, and you wait 3 seconds'],
+        wall: ['Narrow road', 'Walls close the outside lanes, so keep to the middle'],
         bike: ['Motorbike', 'Weaves around its lane'], cycle: ['Cycle', 'Slow, and wobbles a little'],
         walker: ['Zebra crossing', 'People walk across, so watch for them'],
         signal: ['Traffic light', 'Ride under a green arrow. A red X costs 100 points and slows you'],
@@ -1534,11 +1778,17 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       dailyT: 'Every day', daily: 'Your first ride today is on the same road as everyone else. Every time you ride again, the traffic moves to new places. Your best score counts, and a new road opens at midnight, Nepal time.'
     },
     ne: {
-      goalT: 'लक्ष्य', goal: 'सकेसम्म टाढा पुग्नुहोस्। स्कुटर आफैं अगाडि बढ्छ र बिस्तारै छिटो हुन्छ, तपाईंले मोड्ने मात्र हो। लेभल १ मा २७ किमीको रिङरोड छ। यो सकेपछि लेभल २ सुरु हुन्छ: पृथ्वी राजमार्ग, त्यसपछि पोखरा, अनि मुक्तिनाथसम्मको पहाडी बाटो। दुर्घटनापछि पुगेको कुनै पनि लेभलबाट फेरि सुरु गर्न सकिन्छ। मौसम हरेक ठाउँको साँचो हुन्छ, चाहेमा आफैं छान्न पनि सकिन्छ।',
+      goalT: 'लक्ष्य', goal: 'सकेसम्म टाढा पुग्नुहोस्। स्कुटर आफैं अगाडि बढ्छ र बिस्तारै छिटो हुन्छ, तपाईंले मोड्ने मात्र हो। लेभल १ मा २७ किमीको रिङरोड छ। यो सकेपछि बाटो आफैं छान्नुहोस्: पश्चिम पोखरा, जोमसोम र मुक्तिनाथ, वा पूर्व तराई हुँदै वीरगञ्ज, बिर्तामोड र काँकडभिट्टा। दुर्घटनापछि पुगेको कुनै पनि लेभलबाट फेरि सुरु गर्न सकिन्छ। मौसम हरेक ठाउँको साँचो हुन्छ, चाहेमा आफैं छान्न पनि सकिन्छ।',
       steerT: 'कसरी मोड्ने', steer: 'सडकमा ४ लेन छन्। फोनमा स्क्रिनको दायाँ वा बायाँ छेउमा ट्याप वा स्वाइप गर्दा एक लेन सर्छ। कम्प्युटरमा ← → वा A र D थिच्नुहोस्। रोक्न P थिच्नुहोस्।',
       ghostT: 'अरू खेलाडी', ghost: 'अहिले खेलिरहेकाहरूको नाम बाटोको माथि देखिन्छ। तपाईंको नजिक आउँदा नाम र हरियो थोप्लासहितको सानो निलो स्कुटर देखिन्छ। अरू साना स्कुटर आजका उत्कृष्ट राइडका रेकर्डिङ हुन्। कसैले ठोक्दैनन्।',
       stop: 'ठोक्किनुभयो भने खेल सकिन्छ', slow: 'यिनले गाह्रो बनाउँछन्', help: 'यिनले मद्दत गर्छन्',
       items: {
+        bridge: ['बन्द पुल', 'बोर्डले वैकल्पिक बाटोको लेन देखाउँछ'],
+        dirt: ['कच्ची बाटो', 'पिच हुँदैन, स्कुटर निकै ढिलो चल्छ'],
+        hilo: ['हिलो बाटो', 'हिलोमा स्कुटर चिप्लिन्छ'],
+        stream: ['बाटोमा खोला', 'पहाडको पानीले ढिलो बनाउँछ'],
+        jaam: ['जाम', 'गाडीले बाटो छेक्छ, ३ सेकेन्ड पर्खनुपर्छ'],
+        wall: ['साँघुरो बाटो', 'छेउका लेन बन्द हुन्छन्, बीचमा बस्नुहोस्'],
         bike: ['मोटरबाइक', 'लेनभित्रै घुमाउँदै चल्छ'], cycle: ['साइकल', 'ढिलो चल्छ, अलिअलि हल्लिन्छ'],
         walker: ['जेब्रा क्रसिङ', 'मानिस बाटो काट्छन्, ध्यान दिनुहोस्'],
         signal: ['ट्राफिक बत्ती', 'हरियो तीरमुनि जानुहोस्। रातो क्रसमा १०० अंक कट्छ र ढिलो हुन्छ'],
@@ -1572,8 +1822,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     para(R.goalT, R.goal);
     para(R.steerT, R.steer);
     if (API) para(R.ghostT, R.ghost);
-    group('stop', R.stop, ['cow', 'bike', 'micro', 'cycle', 'tempo', 'walker', 'truck', 'dog', 'dig']);
-    group('slow', R.slow, ['signal', 'pothole', 'dust']);
+    group('stop', R.stop, ['cow', 'bike', 'micro', 'cycle', 'tempo', 'walker', 'truck', 'dog', 'dig', 'bridge', 'wall']);
+    group('slow', R.slow, ['signal', 'jaam', 'pothole', 'hilo', 'stream', 'dirt', 'dust']);
     group('help', R.help, ['momo', 'helmet', 'shelter']);
     const pd = mk('div', 'rule-block'); pd.appendChild(mk('h3', '', R.pointsT));
     const pg = mk('div', 'points');
@@ -1616,11 +1866,20 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
 
   /* The home screen shows a real road being ridden, warmed up so the first frame already has traffic */
   /* Anyone whose best ride today already passed a level keeps it unlocked */
+  /* Older saves used one level number; those were all on the west road */
+  for (let i = 1; i <= Math.min(3, save.unlocked || 0); i++) { if (!isOpen(i)) save.opened = (save.opened || []).concat([i]); }
+  if ((save.unlocked || 0) >= 1 && !isOpen(4)) save.opened = (save.opened || []).concat([4]);
   if (save.best && save.best.km >= STAGES[0].stops.length * SEG_KM) {
-    const reached = Math.min(STAGES.length - 1, progressAt(save.best.km).here.si);
-    if (reached > (save.unlocked || 0)) { save.unlocked = reached; persist(); }
+    const list = WAYS[save.best.way || 0];
+    branch = save.best.way || 0;
+    const reached = list.indexOf(progressAt(save.best.km).here.si);
+    branch = 0;
+    openStage(1); openStage(4);
+    list.forEach((si, i) => { if (i <= reached) openStage(si); });
   }
-  startLevel = save.unlocked || 0;
+  persist();
+  startLevel = isOpen(save.lastStage || 0) ? (save.lastStage || 0) : 0;
+  branch = wayOf(startLevel);
   showLevels();
   loadSky(); rollDay(); refreshSide(); resize();
   G = newGame(seedFor(todayNumber()) ^ 0xabc, true);
@@ -1638,6 +1897,12 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       if (freeze > 0) freeze -= dt;
       else {
         update(G, dt);
+        if (wantWay) {
+          wantWay = false; mode = 'choice'; keys.left = keys.right = false; drag = null;
+          stage.classList.remove('playing');
+          ui.way.hidden = false;
+          $('wayWest').focus({ preventScroll: true });
+        }
         if (API && !G.cause) { G.liveIn = (G.liveIn || 0) - dt; if (G.liveIn <= 0) { G.liveIn = LIVE_EVERY; sendLive(G); } }
       }
     }
