@@ -52,6 +52,13 @@ canvas#game { display: block; width: 100%; height: 100%; touch-action: none; use
 .track i.end { background: var(--crimson); }
 
 .hud-chip { justify-self: start; background: var(--marigold); color: var(--navy); font-size: 13px; font-weight: 800; padding: 0 8px; border-radius: 3px; }
+.board { display: grid; gap: 4px; font-variant-numeric: tabular-nums; }
+.board h3 { margin: 0; font: 800 14px var(--body); color: var(--marigold); }
+.board ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 14px; }
+.board li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 6px; }
+.board li span:nth-child(2) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.board li.me { color: var(--marigold); font-weight: 800; }
+.board a { color: var(--paper); font-size: 14px; }
 .levels { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .levels button { appearance: none; background: transparent; color: var(--paper); border: 1px solid var(--muted); border-radius: 3px; font: 600 13px var(--body); padding: 3px 9px; cursor: pointer; }
 .levels button[aria-pressed="true"] { background: var(--marigold); border-color: var(--marigold); color: var(--navy); }
@@ -212,6 +219,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       </div>
       <p class="note" id="copyNote" role="status">Paste it in your group chat and see who gets furthest.</p>
       <textarea id="fallback" hidden readonly aria-label="Your result to copy"></textarea>
+      <div class="board" id="boardResult" hidden></div>
       <button class="link" id="resRulesBtn" type="button">Read the rules</button>
     </section>
 
@@ -228,6 +236,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       <div><b id="sideStreak">0</b><span>Day streak</span></div>
     </div>
     <p class="sub">Change lane with the ← → keys, or by tapping or swiping. Press P to pause.</p>
+    <div class="board" id="boardSide" hidden></div>
   </aside>
 </div>
 
@@ -355,6 +364,30 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     const body = JSON.stringify({ player: getPlayerId(), done: true });
     try { navigator.sendBeacon(API + '/live', new Blob([body], { type: 'application/json' })); } catch (e) { /* the entry expires by itself */ }
   }
+  function loadBoard() {
+    if (!API) return;
+    fetch(API + '/leaderboard', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => {
+      if (!d || !Array.isArray(d.today) || !d.today.length) return;
+      const me = getPlayerId().slice(0, 4);
+      for (const [id, count] of [['boardResult', 5], ['boardSide', 10]]) {
+        const box = document.getElementById(id);
+        if (!box) continue;
+        box.textContent = '';
+        const h = document.createElement('h3'); h.textContent = "Today's top riders"; box.appendChild(h);
+        const ol = document.createElement('ol');
+        d.today.slice(0, count).forEach((r, i) => {
+          const li = document.createElement('li');
+          if (r.id === me) li.className = 'me';
+          for (const t of [String(i + 1), r.name || 'Rider ' + r.id, r.score.toLocaleString('en-US')]) { const c = document.createElement('span'); c.textContent = t; li.appendChild(c); }
+          ol.appendChild(li);
+        });
+        box.appendChild(ol);
+        const a = document.createElement('a'); a.href = '/stats.html'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'See all riders and this week';
+        box.appendChild(a);
+        box.hidden = false;
+      }
+    }).catch(() => {});
+  }
   function pollLive() {
     if (!API || mode === 'play' || document.hidden) return;
     fetch(API + '/live', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(takeLive).catch(() => {});
@@ -374,7 +407,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     fetch(API + '/ghosts', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
       body: JSON.stringify({ player: getPlayerId(), road: save.day - LAUNCH + 1, name: riderName() || undefined, km: +km.toFixed(2), score, path: g.path })
-    }).then(loadGhosts).catch(() => {});
+    }).then(() => { loadGhosts(); loadBoard(); }).catch(() => {});
   }
 
   /* ---------- Play counting: only runs where the hosted version sets window.RRR_API ---------- */
@@ -1208,7 +1241,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     return 'Ring Road Rush #' + (save.day - LAUNCH + 1) + ' 🛵 Try ' + save.tries + '\n'
       + routeText(b.km, b.level || 0) + '\n' + grid + '\n'
       + '🥟 ' + b.momos + ' · ' + b.score.toLocaleString('en-US') + ' pts\n'
-      + CAUSES[b.cause][0];
+      + CAUSES[b.cause][0]
+      + (API ? '\nBeat me: ' + location.origin : '');
   }
 
   function start() {
@@ -1267,6 +1301,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     if (newBest) save.best = run;
     persist(); refreshSide();
     sendEvent('end', { km: +km.toFixed(2), score, momos: g.momos, cause: g.cause });
+    setTimeout(loadBoard, 1200);
     sendGhost(g, km, score);
     leaveLive();
     pollLive();
@@ -1449,6 +1484,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   renderRules(savedLang);
   if (API) {
     loadGhosts();
+    loadBoard();
     const riders = $('riders');
     const notice = 'Your name and rides are public. We save no location.';
     riders.textContent = notice;
