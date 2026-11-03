@@ -45,13 +45,16 @@ canvas#game { display: block; width: 100%; height: 100%; touch-action: none; use
 .hud-next b { color: var(--marigold); font-weight: 800; }
 .hud-nums { display: flex; gap: 12px; flex: none; font-size: 15px; }
 .hud-nums .score { color: var(--marigold); font-weight: 800; }
-.track { display: grid; grid-template-columns: repeat(15, 1fr); gap: 2px; }
+.track { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; }
 .track i { display: block; height: 5px; background: rgba(255,244,220,.25); }
 .track i.done { background: var(--good); }
 .track i.now { background: var(--marigold); }
 .track i.end { background: var(--crimson); }
 
 .hud-chip { justify-self: start; background: var(--marigold); color: var(--navy); font-size: 13px; font-weight: 800; padding: 0 8px; border-radius: 3px; }
+.levels { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.levels button { appearance: none; background: transparent; color: var(--paper); border: 1px solid var(--muted); border-radius: 3px; font: 600 13px var(--body); padding: 3px 9px; cursor: pointer; }
+.levels button[aria-pressed="true"] { background: var(--marigold); border-color: var(--marigold); color: var(--navy); }
 .hud-live { font-size: 13px; font-weight: 600; color: var(--paper); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .live-now { font-size: 14px; font-weight: 600; color: var(--paper); margin: 0; text-align: center; }
 .live-now::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); margin-right: 6px; vertical-align: 1px; }
@@ -108,7 +111,7 @@ p { margin: 0; }
 .stats div { min-width: 0; }
 .stats b { display: block; font-size: 22px; font-weight: 800; line-height: 1.1; }
 .stats span { font-size: 12px; color: var(--muted); }
-.cells { display: grid; grid-template-columns: repeat(15, 1fr); gap: 3px; }
+.cells { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 3px; }
 .cells i { aspect-ratio: 1; background: rgba(255,244,220,.2); }
 .cells i.done { background: var(--good); }
 .cells i.end { background: var(--crimson); }
@@ -139,7 +142,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
 
     <div class="hud" id="hud" hidden>
       <div class="hud-row">
-        <div class="hud-next">Next: <b id="hudNext">Tinkune</b></div>
+        <div class="hud-next"><span id="hudStage">Level 1</span> · Next: <b id="hudNext">Tinkune</b></div>
         <div class="hud-nums">
           <span id="hudKm">0.0 km</span>
           <span id="hudMomo">🥟 0</span>
@@ -167,6 +170,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       </div>
       <div class="rules-foot">
         <button class="btn" id="startBtn" type="button">Start riding</button>
+        <div class="levels" id="levelsHome" hidden></div>
         <p class="live-now" id="liveHome" hidden></p>
         <p class="note" id="riders" hidden></p>
       </div>
@@ -193,6 +197,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         <div><b id="resMomo">0</b><span>Momos</span></div>
         <div><b id="resStreak">1</b><span>Day streak</span></div>
       </div>
+      <div class="levels" id="levelsResult" hidden></div>
       <p class="live-now" id="liveResult" hidden></p>
       <div class="name-row" id="nameRow2" hidden>
         <label for="riderName2">Your name, so others can see you</label>
@@ -234,7 +239,23 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     ['Ekantakuna', 'एकान्तकुना'], ['Satdobato', 'सातदोबाटो'], ['Gwarko', 'ग्वार्को']
   ];
   const SEGS = STOPS.length, LAP_KM = 27, SEG_KM = LAP_KM / SEGS, PX_PER_KM = 3333;
-  const stopName = i => STOPS[i % SEGS][0];
+  /* After the Ring Road the ride carries on across Nepal. Each stop is one 1.8 km segment. */
+  const STAGES = [
+    { name: 'Ring Road', theme: 'city', stops: STOPS.slice(1).concat([STOPS[0]]) },
+    { name: 'Prithvi Highway', theme: 'hills', stops: [['Thankot', 'थानकोट'], ['Naubise', 'नौबिसे'], ['Malekhu', 'मलेखु'], ['Kurintar', 'कुरिनटार'], ['Mugling', 'मुग्लिङ'], ['Abu Khaireni', 'आबुखैरेनी'], ['Dumre', 'डुम्रे'], ['Damauli', 'दमौली'], ['Khairenitar', 'खैरेनीटार']] },
+    { name: 'Pokhara', theme: 'lake', stops: [['Prithvi Chowk', 'पृथ्वीचोक'], ['Mahendrapul', 'महेन्द्रपुल'], ['Lakeside', 'लेकसाइड'], ['Damside', 'दमसाइड'], ['Baidam', 'बैदाम'], ['Hemja', 'हेम्जा']] },
+    { name: 'Mountain road', theme: 'himal', stops: [['Naya Pul', 'नयाँपुल'], ['Beni', 'बेनी'], ['Tatopani', 'तातोपानी'], ['Ghasa', 'घाँसा'], ['Lete', 'लेते'], ['Marpha', 'मार्फा'], ['Jomsom', 'जोमसोम'], ['Kagbeni', 'कागबेनी'], ['Muktinath', 'मुक्तिनाथ']] }
+  ];
+  const ROUTE = [];
+  STAGES.forEach((stage, si) => stage.stops.forEach((stop, idx) => ROUTE.push({ stop, stage, si, idx, last: idx === stage.stops.length - 1 })));
+  /* Stop k is reached after k segments. Stop 0 is the start at Koteshwor. */
+  const routeAt = k => ROUTE[(Math.max(1, k) - 1) % ROUTE.length];
+  const stopAt = k => k <= 0 ? STOPS[0] : routeAt(k).stop;
+  const stopName = k => stopAt(k)[0];
+  /* Each stage is a level. A level starts at the stop after the previous level's last stop. */
+  const LEVEL_STOP = [];
+  STAGES.reduce((k, st, i) => { LEVEL_STOP[i] = k; return k + st.stops.length; }, 0);
+  const themeAtPx = px => routeAt(Math.floor(Math.max(0, px) / 3333 / SEG_KM) + 1).stage.theme;
 
   const CAUSES = {
     cow: ['Gai le bato chhodena', 'The cow did not move. It never moves.'],
@@ -320,7 +341,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   }
   function sendLive(g) {
     if (!API) return;
-    const v = speedAt(kmOf(g)) * g.slow;
+    const v = speedOf(g) * g.slow;
     fetch(API + '/live', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ player: getPlayerId(), name: riderName() || undefined, d: Math.round(g.dist / 10), x: Math.round(g.x), v: Math.round(v) })
@@ -389,9 +410,11 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   const playerY = () => H - 110;
 
   /* ---------- Road generator: spawns by distance, so the same seed always gives the same road ---------- */
-  function makeRoad(seed) {
+  function makeRoad(seed, level) {
     const rng = mulberry32(seed);
-    let at = 650, idx = 0, sinceHelmet = 0, sinceDig = 9, sinceDust = 0, sinceSignal = 3;
+    const lv = level || 0, base = LEVEL_STOP[lv] * SEG_KM * PX_PER_KM;
+    const effKm = () => (at - base) / PX_PER_KM + lv * 9;
+    let at = base + 650, idx = 0, sinceHelmet = 0, sinceDig = 9, sinceDust = 0, sinceSignal = 3;
     const pick = list => list[Math.floor(rng() * list.length)];
     const shuffled = () => { const a = [0, 1, 2, 3]; for (let i = 3; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
@@ -401,7 +424,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         case 'cow': { const dir = lane < 2 ? 1 : -1; return { t: 'cow', x: laneX(lane), w: 60, h: 34, rate: 1, vx: dir * (8 + rng() * 14) }; }
         case 'tempo': return { t: 'tempo', x: laneX(lane), w: 40, h: 58, rate: .72 };
         case 'micro': {
-          const d = Math.min(1, at / PX_PER_KM / LAP_KM);
+          const d = Math.min(1, effKm() / LAP_KM);
           const swerve = rng() < .35 + d * .3;
           const target = lane === 0 ? 1 : lane === 3 ? 2 : lane + (rng() < .5 ? -1 : 1);
           return { t: 'micro', x: laneX(lane), w: 52, h: 90, rate: .8, swerve, toX: laneX(target) };
@@ -415,7 +438,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     return {
       get at() { return at; },
       next() {
-        const km = at / PX_PER_KM, d = Math.min(1, km / LAP_KM);
+        const km = effKm(), d = Math.min(1, km / LAP_KM);
         const weights = [
           ['pothole', 2], ['cow', 2], ['tempo', km > .5 ? 2 : 0], ['micro', km > 2 ? 2 + d * 2 : 0],
           ['truck', km > 5 ? 1 + d : 0], ['dog', km > 3 ? 1 : 0],
@@ -705,13 +728,92 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   }
   const ART = { cow: drawCow, pothole: drawPothole, tempo: drawTempo, micro: drawMicro, truck: drawTruck, dog: drawDog, dig: drawDig, momo: drawMomo, helmet: drawHelmet, bike: drawBike, cycle: drawCycle, walker: drawWalker, signal: drawSignal };
 
+  const SHOULDER = { city: '#8f8a7c', hills: '#7a6a4f', lake: '#8f8a7c', himal: '#8a7c68' };
+  const ROAD_TONE = { city: '#3a3c48', hills: '#3f4049', lake: '#3c3f4c', himal: '#615a50' };
+  function drawSide(theme, bx, bw, y, h, n, side) {
+    const inner = side ? bx : bx + bw - 7;
+    if (theme === 'city') {
+      ctx.fillStyle = BUILD[Math.floor(hash(n) * BUILD.length)]; ctx.fillRect(bx, y, bw, h);
+      ctx.fillStyle = 'rgba(20,20,30,.45)'; ctx.fillRect(bx, y + h - 2, bw, 2);
+      ctx.fillStyle = hash(n * 7) > .5 ? '#55606f' : '#23408c'; ctx.fillRect(inner, y + 22, 7, 100);
+      ctx.fillStyle = 'rgba(255,255,255,.2)'; for (let s = 0; s < 8; s++) ctx.fillRect(inner, y + 28 + s * 12, 7, 1);
+    } else if (theme === 'hills') {
+      if (side) {
+        /* The Trishuli river runs beside the highway */
+        ctx.fillStyle = '#3f8f9a'; ctx.fillRect(bx, y, bw, h);
+        ctx.fillStyle = 'rgba(255,255,255,.45)'; for (let s = 0; s < 4; s++) ctx.fillRect(bx + 6 + hash(n + s) * (bw - 16), y + 12 + s * 34, 10, 2);
+        ctx.fillStyle = '#6d6a62'; ctx.beginPath(); ctx.arc(bx + 8 + hash(n * 3) * (bw - 14), y + 70, 5, 0, 7); ctx.fill();
+        ctx.fillStyle = '#e8e4d6'; for (let s = 0; s < 5; s++) ctx.fillRect(bx + 1, y + s * 30, 2, 18);
+      } else {
+        /* Terraced fields */
+        ctx.fillStyle = '#4f7d45'; ctx.fillRect(bx, y, bw, h);
+        ctx.strokeStyle = 'rgba(30,60,30,.55)'; ctx.lineWidth = 2;
+        for (let s = 0; s < 6; s++) { ctx.beginPath(); ctx.moveTo(bx, y + 12 + s * 25); ctx.quadraticCurveTo(bx + bw / 2, y + 2 + s * 25, bx + bw, y + 14 + s * 25); ctx.stroke(); }
+        ctx.fillStyle = '#2f5a31'; ctx.beginPath(); ctx.arc(bx + 6 + hash(n) * (bw - 12), y + 40 + hash(n * 2) * 70, 8, 0, 7); ctx.fill();
+      }
+    } else if (theme === 'lake') {
+      if (side) {
+        /* Phewa Lake, with painted boats */
+        ctx.fillStyle = '#2f7fa8'; ctx.fillRect(bx, y, bw, h);
+        ctx.strokeStyle = 'rgba(255,255,255,.3)'; ctx.lineWidth = 1;
+        for (let s = 0; s < 6; s++) { const ry = y + 10 + s * 24; ctx.beginPath(); ctx.moveTo(bx + 4, ry); ctx.quadraticCurveTo(bx + 14, ry - 4, bx + 24, ry); ctx.stroke(); }
+        if (hash(n * 5) > .55) {
+          const by = y + 30 + hash(n) * 80, bc = bx + 14;
+          ctx.fillStyle = hash(n * 9) > .5 ? '#dc143c' : '#ffb000'; ctx.beginPath(); ctx.ellipse(bc, by, 5, 15, 0, 0, 7); ctx.fill();
+          ctx.fillStyle = '#fff4dc'; ctx.fillRect(bc - 3, by - 3, 6, 5);
+        }
+      } else {
+        ctx.fillStyle = '#5d8a4f'; ctx.fillRect(bx, y, bw, h);
+        if (hash(n * 4) > .5) { ctx.fillStyle = BUILD[Math.floor(hash(n) * BUILD.length)]; ctx.fillRect(bx + 4, y + 16, bw - 12, 44); ctx.fillStyle = '#8c3b2e'; ctx.fillRect(bx + 2, y + 12, bw - 8, 8); }
+        ctx.fillStyle = '#2f5a31'; for (let s = 0; s < 2; s++) { ctx.beginPath(); ctx.arc(bx + 8 + hash(n + s) * (bw - 16), y + 84 + s * 34, 9, 0, 7); ctx.fill(); }
+      }
+    } else {
+      /* Dry, rocky mountain road with snow, boulders and white chortens */
+      ctx.fillStyle = hash(n) > .5 ? '#8b8173' : '#7d7366'; ctx.fillRect(bx, y, bw, h);
+      ctx.fillStyle = '#f4f6f8'; ctx.beginPath(); ctx.ellipse(bx + hash(n * 2) * bw, y + 30 + hash(n * 3) * 80, 14, 9, 0, 0, 7); ctx.fill();
+      ctx.fillStyle = '#5f574c'; for (let s = 0; s < 2; s++) { ctx.beginPath(); ctx.arc(bx + 6 + hash(n + s + 3) * (bw - 12), y + 18 + s * 88, 6, 0, 7); ctx.fill(); }
+      if (hash(n * 6) > .72) {
+        const cx = bx + bw / 2, cy = y + 74;
+        ctx.fillStyle = '#f4f1e6'; ctx.fillRect(cx - 8, cy - 2, 16, 12); ctx.beginPath(); ctx.arc(cx, cy - 2, 7, 0, 7); ctx.fill();
+        ctx.fillStyle = '#c2852f'; ctx.fillRect(cx - 1.5, cy - 15, 3, 8);
+      }
+    }
+    ctx.fillStyle = SHOULDER[theme];
+    ctx.fillRect(side ? ROAD_R : ROAD_L - 8, y, 8, h);
+  }
+  function drawBackdrop(theme, dist) {
+    if (theme === 'city') return;
+    const shift = (dist * .004) % 80, band = 136;
+    const ridge = (base, height, step, color, seed) => {
+      ctx.fillStyle = color; ctx.beginPath(); ctx.moveTo(0, band); 
+      for (let i = -1; i < W / step + 3; i++) { const x = i * step - (shift * (seed + 1)) % step; ctx.lineTo(x, base - hash(i + seed * 31 + Math.floor(shift * (seed + 1) / step)) * height); }
+      ctx.lineTo(W, band); ctx.fill();
+    };
+    if (theme === 'hills') {
+      ctx.fillStyle = '#a8d0e6'; ctx.fillRect(0, 0, W, band);
+      ridge(band - 28, 34, 46, '#6f9a76', 1); ridge(band - 8, 30, 34, '#3f7346', 2);
+    } else if (theme === 'lake') {
+      ctx.fillStyle = '#a8d0e6'; ctx.fillRect(0, 0, W, band);
+      /* The fishtail peak above the lake */
+      ctx.fillStyle = '#eef3f7'; ctx.beginPath(); ctx.moveTo(110, band - 20); ctx.lineTo(196, 34); ctx.lineTo(208, 50); ctx.lineTo(220, 30); ctx.lineTo(300, band - 20); ctx.fill();
+      ctx.fillStyle = '#b9c7d4'; ctx.beginPath(); ctx.moveTo(208, 50); ctx.lineTo(300, band - 20); ctx.lineTo(220, band - 20); ctx.fill();
+      ridge(band - 8, 26, 38, '#4f7d45', 2);
+    } else {
+      ctx.fillStyle = '#7fb4dc'; ctx.fillRect(0, 0, W, band);
+      ridge(band - 12, 76, 62, '#eef3f7', 0); ridge(band - 2, 34, 40, '#8b8173', 2);
+    }
+    const fade = ctx.createLinearGradient(0, band - 22, 0, band + 6);
+    fade.addColorStop(0, 'rgba(58,60,72,0)'); fade.addColorStop(1, ROAD_TONE[theme]);
+    ctx.fillStyle = fade; ctx.fillRect(ROAD_L, band - 22, ROAD_R - ROAD_L, 28);
+  }
   function drawScenery(dist) {
-    ctx.fillStyle = '#3a3c48'; ctx.fillRect(0, 0, W, H);
-    const blockH = 150, first = Math.floor((dist - 200) / blockH);
-    /* road surface wear */
-    for (let i = first; i < first + H / blockH + 3; i++) {
-      const y = dist - i * blockH + H - blockH, r = hash(i * 3.3);
-      if (r > .55) { ctx.fillStyle = r > .8 ? '#343641' : '#42444f'; ctx.fillRect(ROAD_L + hash(i) * 200, y, 60 + hash(i * 2) * 60, 46 + hash(i * 5) * 50); }
+    ctx.fillStyle = ROAD_TONE[themeAtPx(dist)]; ctx.fillRect(0, 0, W, H);
+    const blockH = 150, first = Math.floor((dist - 200) / blockH), rows = H / blockH + 3;
+    const themeRow = i => themeAtPx(i * blockH + blockH - 110);
+    for (let i = first; i < first + rows; i++) {
+      const y = dist - i * blockH + H - blockH, r = hash(i * 3.3), theme = themeRow(i);
+      ctx.fillStyle = ROAD_TONE[theme]; ctx.fillRect(ROAD_L, y, ROAD_R - ROAD_L, blockH + 1);
+      if (r > .55) { ctx.fillStyle = r > .8 ? 'rgba(0,0,0,.1)' : 'rgba(255,255,255,.04)'; ctx.fillRect(ROAD_L + hash(i) * 200, y, 60 + hash(i * 2) * 60, 46 + hash(i * 5) * 50); }
     }
     /* lane paint, fading in places as it does on the real road */
     const dash = 72, off = dist % dash;
@@ -723,24 +825,16 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         ctx.fillRect(x - 2, y, 4, 34);
       }
     }
-    /* pavement and shopfronts */
-    ctx.fillStyle = '#8f8a7c'; ctx.fillRect(ROAD_L - 8, 0, 8, H); ctx.fillRect(ROAD_R, 0, 8, H);
     for (const side of [0, 1]) {
       const bx = side ? ROAD_R + 8 : 0, bw = ROAD_L - 8;
-      for (let i = first; i < first + H / blockH + 3; i++) {
-        const n = i * 2 + side, y = dist - i * blockH + H - blockH;
-        ctx.fillStyle = BUILD[Math.floor(hash(n) * BUILD.length)]; ctx.fillRect(bx, y, bw, blockH);
-        ctx.fillStyle = 'rgba(20,20,30,.45)'; ctx.fillRect(bx, y + blockH - 2, bw, 2);
-        const shop = side ? bx : bx + bw - 7;
-        ctx.fillStyle = hash(n * 7) > .5 ? '#55606f' : '#23408c'; ctx.fillRect(shop, y + 22, 7, 100);
-        ctx.fillStyle = 'rgba(255,255,255,.2)'; for (let s = 0; s < 8; s++) ctx.fillRect(shop, y + 28 + s * 12, 7, 1);
-      }
+      for (let i = first; i < first + rows; i++) drawSide(themeRow(i), bx, bw, dist - i * blockH + H - blockH, blockH, i * 2 + side, side);
     }
-    /* poles and the tangle of overhead wires */
+    /* poles and the tangle of overhead wires: city streets only */
     const poleGap = 330, pf = Math.floor((dist - 200) / poleGap);
     ctx.lineWidth = 1;
     for (let i = pf; i < pf + H / poleGap + 3; i++) {
       for (const side of [0, 1]) {
+        if (themeAtPx(i * poleGap + side * 110 + 90) !== 'city') continue;
         const y = dist - i * poleGap - side * 110 + H - 200, x = side ? ROAD_R + 12 : ROAD_L - 12;
         ctx.fillStyle = '#1c1c24'; ctx.fillRect(x - 2.5, y - 2.5, 5, 5);
         for (let w = 0; w < 5; w++) {
@@ -755,6 +849,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         }
       }
     }
+    drawBackdrop(themeAtPx(dist + H), dist);
   }
 
   function drawGate(i, y) {
@@ -766,7 +861,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       ctx.fillStyle = FLAGS[k % 5]; ctx.fillRect(x - 6, y - 24 + sag, 12, 15);
     }
     ctx.strokeStyle = '#f2f2e6'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(26, y - 24); ctx.quadraticCurveTo(200, y + 4, 374, y - 24); ctx.stroke();
-    const s = STOPS[i % SEGS];
+    const s = stopAt(i);
     ctx.fillStyle = '#003893'; rr(ctx, 118, y - 74, 164, 44, 3); ctx.fill();
     ctx.strokeStyle = '#ffb000'; ctx.lineWidth = 2; ctx.stroke();
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff4dc';
@@ -780,17 +875,20 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   const keys = { left: false, right: false };
   let drag = null;
 
-  function newGame(seed, attract) {
-    return { road: makeRoad(seed), row: null, objs: [], dist: 0, x: laneX(1), target: laneX(1), vx: 0, t: 0, nextSample: 0, path: [], ghosts: [], hold: 0, slow: 1, dust: 0, shield: false, inv: 0,
-      momos: 0, nears: 0, greens: 0, fines: 0, floats: [], attract, gate: 1, crashT: 0, cause: null, banner: 0, bannerI: 0, lapped: false };
+  function newGame(seed, attract, level) {
+    const lv = level || 0, startStop = LEVEL_STOP[lv];
+    return { level: lv, startKm: startStop * SEG_KM, road: makeRoad(seed, lv), row: null, objs: [], dist: startStop * SEG_KM * PX_PER_KM, x: laneX(1), target: laneX(1), vx: 0, t: 0, nextSample: 0, path: [], ghosts: [], hold: 0, slow: 1, dust: 0, shield: false, inv: 0,
+      momos: 0, nears: 0, greens: 0, fines: 0, floats: [], attract, gate: startStop + 1, crashT: 0, cause: null, banner: 0, bannerI: 0, lapped: false };
   }
   const kmOf = g => g.dist / PX_PER_KM;
-  const scoreOf = g => Math.max(0, Math.floor(kmOf(g) * 100) + g.momos * 25 + g.nears * 10 + g.greens * 20 - g.fines * 100);
+  const scoreOf = g => Math.max(0, Math.floor((kmOf(g) - g.startKm) * 100) + g.momos * 25 + g.nears * 10 + g.greens * 20 - g.fines * 100);
+  const speedOf = g => speedAt(kmOf(g) - g.startKm + g.level * 9);
   function speedAt(km) { return 270 + 300 * Math.min(1, km / LAP_KM) + (km > LAP_KM ? Math.min(150, (km - LAP_KM) * 10) : 0); }
   const laneIndex = x => Math.max(0, Math.min(3, Math.round((x - laneX(0)) / LANE_W)));
   function stepLane(g, d) { g.target = laneX(Math.max(0, Math.min(3, laneIndex(g.target) + d))); }
   function float(g, x, y, txt, color) { g.floats.push({ x, y, txt, color: color || '#fff4dc', life: 1 }); }
 
+  const TRAFFIC_BLOCKS = { micro: 1, tempo: 1, truck: 1, bike: 1, cycle: 1, cow: 1, dig: 1 };
   function spawn(g) {
     if (!g.row) g.row = g.road.next();
     while (g.dist >= g.row.at) {
@@ -806,7 +904,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     const km = kmOf(g), py = playerY();
     g.slow = Math.min(1, g.slow + dt * .42);
     const crashed = !!g.cause;
-    const v = crashed ? Math.max(0, speedAt(km) * (1 - g.crashT / .35)) : speedAt(km) * g.slow;
+    const v = crashed ? Math.max(0, speedOf(g) * (1 - g.crashT / .35)) : speedOf(g) * g.slow;
     g.dist += v * dt;
     spawn(g);
 
@@ -836,7 +934,13 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     }
     g.target = Math.max(ROAD_L + 16, Math.min(ROAD_R - 16, g.target));
     const prevX = g.x;
-    if (!crashed) g.x += (g.target - g.x) * Math.min(1, dt * 13);
+    /* A pothole throws the scooter off balance: it shakes side to side and steers badly for a moment */
+    const wob = g.wobble > 0 ? g.wobble : 0;
+    if (wob) g.wobble -= dt;
+    if (!crashed) {
+      g.x += (g.target - g.x) * Math.min(1, dt * (wob ? 5 : 13));
+      if (wob) g.x = Math.max(ROAD_L + 14, Math.min(ROAD_R - 14, g.x + Math.sin(g.t * 19) * Math.min(1, wob) * 150 * dt));
+    }
     g.vx = (g.x - prevX) / Math.max(dt, .001);
 
     /* Record this ride so others can race it as a ghost */
@@ -849,8 +953,12 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     /* gates at each stop */
     const gatePx = g.gate * SEG_KM * PX_PER_KM;
     if (g.dist >= gatePx && !crashed) {
-      g.banner = 1.5; g.bannerI = g.gate;
-      if (!g.attract) { sfx.stop(); if (g.gate === SEGS && !g.lapped) { g.lapped = true; float(g, 200, H * .4, 'Lap complete. Keep going!', '#ffb000'); } }
+      const here = routeAt(g.gate);
+      g.banner = here.last ? 3.5 : 1.5; g.bannerI = g.gate;
+      if (!g.attract) {
+        sfx.stop();
+        if (here.last && !g.bot && here.si + 1 < STAGES.length && (save.unlocked || 0) < here.si + 1) { save.unlocked = here.si + 1; persist(); }
+      }
       g.gate++;
     }
 
@@ -864,8 +972,13 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         o.x += o.dogV * dt;
       }
       if (o.t === 'micro' && o.swerve && !o.swerved && o.y > H * .2) {
-        o.swerved = true; o.blink = true; o.wait = .45; o.brake = .68;
-        if (!g.attract) float(g, o.x, o.y - 56, 'Kalanki! Kalanki!', '#ffb000');
+        o.swerved = true;
+        /* Only change lane if that lane is clear */
+        const clear = !g.objs.some(q => q !== o && q.h && q.t !== 'momo' && q.t !== 'helmet' && Math.abs(q.x - o.toX) < (q.w + o.w) / 2 + 8 && Math.abs(q.y - o.y) < (q.h + o.h) / 2 + 90);
+        if (clear) {
+          o.blink = true; o.wait = .45; o.brake = .68;
+          if (!g.attract) float(g, o.x, o.y - 56, 'Kalanki! Kalanki!', '#ffb000');
+        }
       }
       if (o.walkV && o.y > 0) o.x += o.walkV * dt;
       if (o.weave) o.x = o.bx + Math.sin(o.y / o.wl + o.ph) * o.weave;
@@ -889,7 +1002,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       } else if (o.t === 'helmet') {
         if (hit) { o.gone = true; g.shield = true; sfx.helmet(); float(g, o.x, o.y - 20, 'Helmet on', '#ffb000'); }
       } else if (o.soft) {
-        if (hit && !o.struck) { o.struck = true; g.slow = .55; sfx.bump(); if (!reduced) shake = .22; float(g, o.x, o.y - 20, 'Khaldo!', '#ffe7b0'); }
+        if (hit && !o.struck) { o.struck = true; g.slow = .55; g.wobble = 1.1; sfx.bump(); if (!reduced) shake = .22; float(g, o.x, o.y - 20, 'Khaldo! Hold on!', '#ffe7b0'); }
       } else {
         if (hit && g.inv <= 0) {
           if (g.shield) { g.shield = false; g.inv = 1.2; o.gone = true; sfx.helmet(); float(g, g.x, py - 44, 'Helmet le bachayo!', '#ffb000'); }
@@ -899,6 +1012,14 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
           if (Math.abs(o.x - g.x) - (o.w + pw) / 2 < 16) { g.nears++; sfx.near(); float(g, g.x, py - 44, 'Jhandai! +10', '#fff4dc'); }
         }
       }
+    }
+    /* Traffic never drives through other traffic: the one behind holds back */
+    const solid = g.objs.filter(o => TRAFFIC_BLOCKS[o.t] && !o.gone);
+    for (let i = 0; i < solid.length; i++) for (let j = i + 1; j < solid.length; j++) {
+      const a = solid[i], b = solid[j], need = (a.h + b.h) / 2 + 8;
+      if (Math.abs(a.x - b.x) >= (a.w + b.w) / 2 + 4 || Math.abs(a.y - b.y) >= need) continue;
+      const upper = a.y < b.y ? a : b, lower = upper === a ? b : a;
+      if (upper.rate < 1) upper.y = lower.y - need; else if (lower.rate < 1) lower.y = upper.y + need;
     }
     g.objs = g.objs.filter(o => !o.gone && o.y < H + 170 && o.x > -60 && o.x < W + 60);
 
@@ -925,7 +1046,14 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       ctx.save(); ctx.translate(g.x, py); ctx.rotate(Math.min(1.3, g.crashT * 5)); ctx.translate(-g.x, -py);
       drawPlayer(ctx, g.x, py, 0, false, false); ctx.restore();
     } else {
-      drawPlayer(ctx, g.x, py, Math.max(-.32, Math.min(.32, g.vx / 900)), g.shield, g.inv > 0);
+      const tilt = g.wobble > 0 && !reduced ? Math.sin(g.t * 19) * .42 * Math.min(1, g.wobble) : Math.max(-.32, Math.min(.32, g.vx / 900));
+      drawPlayer(ctx, g.x, py, tilt, g.shield, g.inv > 0);
+      const myName = !g.attract && riderName();
+      if (myName) {
+        ctx.font = '600 11px Mukta, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3;
+        ctx.strokeStyle = 'rgba(9,18,56,.85)'; ctx.strokeText(myName, g.x, py + 38);
+        ctx.fillStyle = '#fff4dc'; ctx.fillText(myName, g.x, py + 38);
+      }
     }
     renderSky(g, py);
     if (g.dust > 0) {
@@ -951,11 +1079,17 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       }
     }
     if (g.banner > 0 && !g.attract) {
-      const s = STOPS[g.bannerI % SEGS];
+      const here = routeAt(g.bannerI), s = here.stop;
+      const nextStage = STAGES[(here.si + 1) % STAGES.length];
       ctx.globalAlpha = Math.min(1, g.banner * 1.8);
       ctx.font = '400 34px "Rozha One", serif'; ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(9,18,56,.9)';
       ctx.strokeText(s[1], 200, 104); ctx.fillStyle = '#ffb000'; ctx.fillText(s[1], 200, 104);
       ctx.font = '800 16px Mukta, sans-serif'; ctx.strokeText(s[0], 200, 136); ctx.fillStyle = '#fff4dc'; ctx.fillText(s[0], 200, 136);
+      if (here.last) {
+        const nextNum = (here.si + 1) % STAGES.length + 1;
+        const line = 'Level ' + (here.si + 1) + ' done! Level ' + nextNum + ': ' + nextStage.name;
+        ctx.strokeText(line, 200, 164); ctx.fillStyle = '#ffb000'; ctx.fillText(line, 200, 164);
+      }
       ctx.globalAlpha = 1;
     }
     ctx.restore();
@@ -967,6 +1101,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   const stage = $('stage');
   const track = $('hudTrack');
   for (let i = 0; i < SEGS; i++) track.appendChild(document.createElement('i'));
+  /* Which stage a distance falls in, and how many of its stops are behind you */
+  const progressAt = km => { const here = routeAt(Math.floor(km / SEG_KM) + 1); return { here, stage: here.stage, done: here.idx }; };
 
   function updateHud(g) {
     const km = kmOf(g), seg = Math.floor(km / SEG_KM);
@@ -975,8 +1111,11 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     $('hudMomo').textContent = '🥟 ' + g.momos;
     $('hudScore').textContent = scoreOf(g).toLocaleString('en-US');
     $('hudHelmet').hidden = !g.shield;
-    const lapSeg = Math.min(seg, SEGS);
-    Array.from(track.children).forEach((el, i) => { el.className = i < lapSeg ? 'done' : i === lapSeg ? 'now' : ''; });
+    const { stage, done } = progressAt(km);
+    $('hudStage').textContent = 'Level ' + (STAGES.indexOf(stage) + 1);
+    while (track.children.length > stage.stops.length) track.lastChild.remove();
+    while (track.children.length < stage.stops.length) track.appendChild(document.createElement('i'));
+    Array.from(track.children).forEach((el, i) => { el.className = i < done ? 'done' : i === done ? 'now' : ''; });
   }
 
   function drawRing(km) {
@@ -1006,6 +1145,24 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     const sm = el('text', { x: cx, y: cy + 24, 'text-anchor': 'middle', class: 'small' }); sm.textContent = 'one lap';
   }
 
+  let startLevel = 0;
+  function showLevels() {
+    const top = save.unlocked || 0;
+    for (const id of ['levelsHome', 'levelsResult']) {
+      const box = $(id);
+      box.hidden = top < 1;
+      box.textContent = '';
+      if (top < 1) continue;
+      const label = document.createElement('span'); label.textContent = 'Start from:'; box.appendChild(label);
+      for (let i = 0; i <= top; i++) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = 'Level ' + (i + 1); b.title = STAGES[i].name;
+        b.setAttribute('aria-pressed', String(i === startLevel));
+        b.addEventListener('click', () => { startLevel = i; showLevels(); });
+        box.appendChild(b);
+      }
+    }
+  }
   function refreshSide() {
     const best = save.best;
     const road = save.day - LAUNCH + 1;
@@ -1019,28 +1176,34 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
 
   function fillCells(container, km) {
     container.textContent = '';
-    const seg = Math.floor(km / SEG_KM), lapped = km >= LAP_KM;
-    for (let i = 0; i < SEGS; i++) {
+    const { stage, done } = progressAt(km);
+    for (let i = 0; i < stage.stops.length; i++) {
       const c = document.createElement('i');
-      c.className = (lapped || i < seg) ? 'done' : i === seg ? 'end' : '';
+      c.className = i < done ? 'done' : i === done ? 'end' : '';
       container.appendChild(c);
     }
   }
 
-  function routeText(km) {
-    if (km >= LAP_KM) return 'Full lap of the Ring Road, ' + km.toFixed(1) + ' km';
+  function routeText(km, level) {
     const seg = Math.floor(km / SEG_KM);
+    if (level > 0) {
+      const name = 'Level ' + (level + 1) + ', ' + STAGES[level].name;
+      return seg > LEVEL_STOP[level] ? name + ': reached ' + stopName(seg) : name + ': crashed before the first stop';
+    }
     if (seg < 1) return 'Did not leave Koteshwor, ' + km.toFixed(1) + ' km';
-    return 'Koteshwor → ' + stopName(seg) + ', ' + km.toFixed(1) + ' km';
+    if (seg < SEGS) return 'Koteshwor → ' + stopName(seg) + ', ' + km.toFixed(1) + ' km';
+    if (seg === SEGS) return 'Full lap of the Ring Road, ' + km.toFixed(1) + ' km';
+    const passed = routeAt(seg);
+    return 'Reached ' + passed.stop[0] + ', ' + passed.stage.name + ', ' + km.toFixed(1) + ' km';
   }
 
   function shareText() {
     const b = save.best; if (!b) return '';
-    const seg = Math.floor(b.km / SEG_KM), lapped = b.km >= LAP_KM;
+    const { stage, done } = progressAt(b.km);
     let grid = '';
-    for (let i = 0; i < SEGS; i++) grid += (lapped || i < seg) ? '🟩' : i === seg ? '🟥' : '⬜';
+    for (let i = 0; i < stage.stops.length; i++) grid += i < done ? '🟩' : i === done ? '🟥' : '⬜';
     return 'Ring Road Rush #' + (save.day - LAUNCH + 1) + ' 🛵 Try ' + save.tries + '\n'
-      + routeText(b.km) + '\n' + grid + '\n'
+      + routeText(b.km, b.level || 0) + '\n' + grid + '\n'
       + '🥟 ' + b.momos + ' · ' + b.score.toLocaleString('en-US') + ' pts\n'
       + CAUSES[b.cause][0];
   }
@@ -1054,7 +1217,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     save.tries++; persist(); refreshSide();
     sendEvent('start');
     /* First ride of the day is the same road for everyone; each retry shuffles the traffic */
-    G = newGame((seedFor(day) ^ Math.imul(save.tries - 1, 0x9e3779b1)) >>> 0, false);
+    G = newGame((seedFor(day) ^ Math.imul(save.tries - 1, 0x9e3779b1) ^ Math.imul(startLevel, 0x85ebca6b)) >>> 0, false, startLevel);
+    if (startLevel > 0) { G.banner = 0; float(G, 200, H * .32, 'Level ' + (startLevel + 1) + ': ' + STAGES[startLevel].name, '#ffb000'); }
     const me = API ? getPlayerId().slice(0, 4) : '';
     /* At most 3 recordings, only real rides, never the player's own */
     G.ghosts = ghostList.filter(gh => gh.id !== me && gh.km >= 2).slice(0, 3).map(gh => ({ id: gh.id, path: gh.path, label: gh.name || 'Rider ' + gh.id }));
@@ -1095,7 +1259,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   function endRun(g) {
     mode = 'result'; showHint = false;
     stage.classList.remove('playing');
-    const km = kmOf(g), score = scoreOf(g), run = { score, km, momos: g.momos, cause: g.cause };
+    const km = kmOf(g), score = scoreOf(g), run = { score, km, momos: g.momos, cause: g.cause, level: g.level };
     const newBest = !save.best || score > save.best.score;
     if (newBest) save.best = run;
     persist(); refreshSide();
@@ -1108,7 +1272,10 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     $('resCause').textContent = CAUSES[g.cause][0];
     $('resCauseEn').textContent = CAUSES[g.cause][1];
     fillCells($('resCells'), km);
-    $('resRoute').textContent = routeText(km);
+    $('resRoute').textContent = routeText(km, g.level);
+    /* Next ride starts from the level you reached, or pick an earlier one */
+    startLevel = Math.min(save.unlocked || 0, progressAt(km).here.si);
+    showLevels();
     $('resScore').textContent = score.toLocaleString('en-US');
     $('resBest').textContent = save.best.score.toLocaleString('en-US');
     $('resMomo').textContent = g.momos;
@@ -1195,7 +1362,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   };
   const RULES = {
     en: {
-      goalT: 'Your goal', goal: 'Ride as far as you can. One full lap of the Ring Road is 27 km. Your scooter moves by itself and gets faster, so you only steer.',
+      goalT: 'Your goal', goal: 'Ride as far as you can. Your scooter moves by itself and gets faster, so you only steer. Level 1 is the 27 km Ring Road. Finish it and Level 2 starts: Prithvi Highway, then Pokhara, then the mountain road to Muktinath. After a crash you can restart from any level you have reached.',
       steerT: 'How to steer', steer: 'The road has 4 lanes. On a phone, tap the left or right side of the screen, or swipe, to move one lane. On a computer, press ← → or A and D. Press P to pause.',
       ghostT: 'Other riders', ghost: "Anyone riding right now is listed at the top of the road. When they are near you on the road, you see a small blue scooter with their name and a green dot. Other small scooters are recordings of today's best rides. None of them can hit you.",
       stop: 'Hit one and your ride ends', slow: 'These make it harder', help: 'These help you',
@@ -1206,14 +1373,14 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         cow: ['Gai', 'Stands in the road and walks slowly'], micro: ['Microbus', 'An orange blinker means it is changing lane'],
         tempo: ['Safa Tempo', 'Moves slower than you'], truck: ['Truck', 'Takes up two lanes'],
         dog: ['Kukur', 'Runs across the road'], dig: ['Dug-up road', 'Only one lane stays open'],
-        pothole: ['Khaldo', 'Slows you for a moment'], dust: ['Dhulo', 'Hides the road ahead for about 3 seconds'],
+        pothole: ['Khaldo', 'Slows you and shakes your scooter off balance'], dust: ['Dhulo', 'Hides the road ahead for about 3 seconds'],
         momo: ['Momo', '+25 points'], helmet: ['Helmet', 'Saves you from one crash']
       },
       pointsT: 'Points', pts: [['100', 'for each km'], ['25', 'for each momo'], ['20', 'for each green light'], ['10', 'for each close pass']],
       dailyT: 'Every day', daily: 'Your first ride today is on the same road as everyone else. Every time you ride again, the traffic moves to new places. Your best score counts, and a new road opens at midnight, Nepal time.'
     },
     ne: {
-      goalT: 'लक्ष्य', goal: 'सकेसम्म टाढा पुग्नुहोस्। रिङरोडको पूरा एक फन्को २७ किमी हो। स्कुटर आफैं अगाडि बढ्छ र बिस्तारै छिटो हुन्छ, तपाईंले मोड्ने मात्र हो।',
+      goalT: 'लक्ष्य', goal: 'सकेसम्म टाढा पुग्नुहोस्। स्कुटर आफैं अगाडि बढ्छ र बिस्तारै छिटो हुन्छ, तपाईंले मोड्ने मात्र हो। लेभल १ मा २७ किमीको रिङरोड छ। यो सकेपछि लेभल २ सुरु हुन्छ: पृथ्वी राजमार्ग, त्यसपछि पोखरा, अनि मुक्तिनाथसम्मको पहाडी बाटो। दुर्घटनापछि पुगेको कुनै पनि लेभलबाट फेरि सुरु गर्न सकिन्छ।',
       steerT: 'कसरी मोड्ने', steer: 'सडकमा ४ लेन छन्। फोनमा स्क्रिनको दायाँ वा बायाँ छेउमा ट्याप वा स्वाइप गर्दा एक लेन सर्छ। कम्प्युटरमा ← → वा A र D थिच्नुहोस्। रोक्न P थिच्नुहोस्।',
       ghostT: 'अरू खेलाडी', ghost: 'अहिले खेलिरहेकाहरूको नाम बाटोको माथि देखिन्छ। तपाईंको नजिक आउँदा नाम र हरियो थोप्लासहितको सानो निलो स्कुटर देखिन्छ। अरू साना स्कुटर आजका उत्कृष्ट राइडका रेकर्डिङ हुन्। कसैले ठोक्दैनन्।',
       stop: 'ठोक्किनुभयो भने खेल सकिन्छ', slow: 'यिनले गाह्रो बनाउँछन्', help: 'यिनले मद्दत गर्छन्',
@@ -1224,7 +1391,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         cow: ['गाई', 'बाटोमै उभिन्छ, बिस्तारै हिँड्छ'], micro: ['माइक्रोबस', 'सुन्तला बत्ती बल्यो भने लेन बदल्छ'],
         tempo: ['सफा टेम्पो', 'तपाईंभन्दा ढिलो चल्छ'], truck: ['ट्रक', 'दुई लेन ओगट्छ'],
         dog: ['कुकुर', 'बाटो काटेर दौडिन्छ'], dig: ['खनेको बाटो', 'एउटा लेन मात्र खुला हुन्छ'],
-        pothole: ['खाल्डो', 'केही बेर ढिलो बनाउँछ'], dust: ['धुलो', 'अगाडिको बाटो करिब ३ सेकेन्ड देखिँदैन'],
+        pothole: ['खाल्डो', 'ढिलो बनाउँछ र स्कुटरको सन्तुलन बिगार्छ'], dust: ['धुलो', 'अगाडिको बाटो करिब ३ सेकेन्ड देखिँदैन'],
         momo: ['मोमो', '+२५ अंक'], helmet: ['हेल्मेट', 'एक पटक ठोक्किँदा बचाउँछ']
       },
       pointsT: 'अंक', pts: [['१००', 'प्रति किमी'], ['२५', 'प्रति मोमो'], ['२०', 'हरियो बत्तीमा'], ['१०', 'नजिकबाट जोगिँदा']],
@@ -1290,6 +1457,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   }
 
   /* The home screen shows a real road being ridden, warmed up so the first frame already has traffic */
+  startLevel = save.unlocked || 0;
+  showLevels();
   loadSky(); rollDay(); refreshSide(); resize();
   G = newGame(seedFor(todayNumber()) ^ 0xabc, true);
   G.dist = 2.5 * PX_PER_KM;
