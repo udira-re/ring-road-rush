@@ -73,6 +73,7 @@ canvas#game { display: block; width: 100%; height: 100%; touch-action: none; use
 .rules-foot { padding: 12px 16px 16px; border-top: 4px solid var(--crimson); display: grid; gap: 6px; }
 .name-row { display: grid; gap: 2px; font-size: 13px; color: var(--muted); }
 .name-row input { width: 100%; background: transparent; color: var(--paper); border: 1px solid var(--muted); border-radius: 3px; font: 400 16px var(--body); padding: 6px 8px; }
+.name-err { margin: 2px 0 0; font-size: 14px; font-weight: 600; color: #ff8a98; }
 .rules-foot .note { min-height: 0; font-size: 13px; text-align: center; }
 .lang { display: flex; gap: 0; padding: 10px 96px 8px 16px; flex: none; }
 .lang button { appearance: none; background: transparent; color: var(--paper); border: 1px solid var(--muted); font: 600 14px var(--body); padding: 4px 12px; cursor: pointer; }
@@ -162,13 +163,14 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       <div class="rules-scroll">
         <div class="kicker" id="homeKicker">Road #1</div>
         <h1><small>रिङ रोड रस</small>Ring Road Rush</h1>
-        <div class="name-row" id="nameRow" hidden>
-          <label for="riderName">Your name, so other riders can see you</label>
-          <input id="riderName" type="text" maxlength="24" autocomplete="nickname" placeholder="Type a name or nickname (optional)">
-        </div>
         <div class="rule-block" id="rulesBody" style="gap:14px"></div>
       </div>
       <div class="rules-foot">
+        <div class="name-row" id="nameRow" hidden>
+          <label for="riderName">Your name (needed to ride)</label>
+          <input id="riderName" type="text" maxlength="24" autocomplete="nickname" placeholder="Type a name or nickname" required>
+          <p class="name-err" id="nameErr" role="alert" hidden>Type a name to start riding.</p>
+        </div>
         <button class="btn" id="startBtn" type="button">Start riding</button>
         <div class="levels" id="levelsHome" hidden></div>
         <p class="live-now" id="liveHome" hidden></p>
@@ -200,8 +202,9 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       <div class="levels" id="levelsResult" hidden></div>
       <p class="live-now" id="liveResult" hidden></p>
       <div class="name-row" id="nameRow2" hidden>
-        <label for="riderName2">Your name, so others can see you</label>
-        <input id="riderName2" type="text" maxlength="24" autocomplete="nickname" placeholder="Type a name or nickname">
+        <label for="riderName2">Your name (needed to ride)</label>
+        <input id="riderName2" type="text" maxlength="24" autocomplete="nickname" placeholder="Type a name or nickname" required>
+        <p class="name-err" id="nameErr2" role="alert" hidden>Type a name to ride again.</p>
       </div>
       <div class="btns">
         <button class="btn" id="retryBtn" type="button">Ride again</button>
@@ -1285,8 +1288,18 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     $('retryBtn').focus({ preventScroll: true });
   }
 
-  $('startBtn').addEventListener('click', () => { if (rulesFrom === 'pause') resume(); else start(); });
-  $('retryBtn').addEventListener('click', start);
+  /* The hosted game needs a name before a ride can start */
+  function nameMissing(boxId, errId) {
+    if (!API || riderName()) return false;
+    $(errId).hidden = false;
+    $(boxId).focus();
+    return true;
+  }
+  $('startBtn').addEventListener('click', () => {
+    if (rulesFrom === 'pause') resume();
+    else if (!nameMissing('riderName', 'nameErr')) start();
+  });
+  $('retryBtn').addEventListener('click', () => { if (!nameMissing('riderName2', 'nameErr2')) start(); });
   $('pauseBtn').addEventListener('click', pause);
   $('resumeBtn').addEventListener('click', resume);
   $('pauseRulesBtn').addEventListener('click', () => showRules('pause'));
@@ -1446,8 +1459,10 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     const nameBox2 = $('riderName2');
     nameBox2.value = nameBox.value;
     $('nameRow2').hidden = false;
-    const syncName = from => { nameBox.value = nameBox2.value = from.value; try { localStorage.setItem(KEY + '.name', from.value); } catch (e) { /* no storage */ } };
+    const syncName = from => { nameBox.value = nameBox2.value = from.value; if (from.value.trim()) $('nameErr').hidden = $('nameErr2').hidden = true; try { localStorage.setItem(KEY + '.name', from.value); } catch (e) { /* no storage */ } };
     nameBox.addEventListener('input', () => syncName(nameBox));
+    nameBox.addEventListener('keydown', e => { if (e.key === 'Enter') $('startBtn').click(); });
+    nameBox2.addEventListener('keydown', e => { if (e.key === 'Enter') $('retryBtn').click(); });
     nameBox2.addEventListener('input', () => syncName(nameBox2));
     pollLive();
     setInterval(pollLive, 20000);
