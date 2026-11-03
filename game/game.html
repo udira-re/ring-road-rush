@@ -73,6 +73,9 @@ canvas#game { display: block; width: 100%; height: 100%; touch-action: none; use
 .pauseb { right: 10px; bottom: 10px; display: none; }
 .stage.playing .mute { top: auto; right: auto; left: 10px; bottom: 10px; }
 .stage.playing .pauseb { display: block; }
+.brakeb { display: none; left: 50%; bottom: 10px; transform: translateX(-50%); padding: 10px 24px; font-size: 15px; font-weight: 800; background: var(--crimson); border-color: var(--marigold); color: #fff; touch-action: none; user-select: none; -webkit-user-select: none; }
+.stage.playing .brakeb { display: block; }
+.brakeb:active { background: #8f0d27; }
 
 /* Rules, pause and result sheets */
 .sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 100%; overflow-y: auto; z-index: 2;
@@ -195,7 +198,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       <p class="sub">Pick your road. Press ← or → on a computer.</p>
       <div class="btns">
         <button class="btn" id="wayWest" type="button">← West: Pokhara, Jomsom</button>
-        <button class="btn alt" id="wayEast" type="button">East → Birgunj, Birtamod</button>
+        <button class="btn alt" id="wayEast" type="button">East → Birgunj, Biratnagar</button>
       </div>
     </section>
 
@@ -240,6 +243,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
 
     <button class="corner mute" id="muteBtn" type="button" aria-pressed="false">Sound on</button>
     <button class="corner pauseb" id="pauseBtn" type="button">Pause</button>
+    <button class="corner brakeb" id="brakeBtn" type="button" aria-label="Hold to brake">Brake</button>
   </main>
 
   <aside class="side" aria-label="Today's route">
@@ -250,7 +254,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       <div><b id="sideTries">0</b><span>Tries today</span></div>
       <div><b id="sideStreak">0</b><span>Day streak</span></div>
     </div>
-    <p class="sub">Change lane with the ← → keys, or by tapping or swiping. Press P to pause.</p>
+    <p class="sub">Change lane with ← →, or by tapping or swiping. Hold Brake, ↓ or S to slow down. Press P to pause.</p>
     <div class="board" id="boardSide" hidden></div>
   </aside>
 </div>
@@ -273,7 +277,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     { name: 'Pokhara', short: 'Pokhara', level: 3, theme: 'lake', stops: [['Prithvi Chowk', 'पृथ्वीचोक'], ['Mahendrapul', 'महेन्द्रपुल'], ['Lakeside', 'लेकसाइड'], ['Damside', 'दमसाइड'], ['Baidam', 'बैदाम'], ['Hemja', 'हेम्जा']] },
     { name: 'Mountain road', short: 'Jomsom', level: 4, theme: 'himal', stops: [['Naya Pul', 'नयाँपुल'], ['Beni', 'बेनी'], ['Tatopani', 'तातोपानी'], ['Ghasa', 'घाँसा'], ['Lete', 'लेते'], ['Marpha', 'मार्फा'], ['Jomsom', 'जोमसोम'], ['Kagbeni', 'कागबेनी'], ['Muktinath', 'मुक्तिनाथ']] },
     { name: 'Terai to Birgunj', short: 'Birgunj', level: 2, theme: 'terai', stops: [['Narayanghat', 'नारायणघाट'], ['Bharatpur', 'भरतपुर'], ['Tandi', 'टाँडी'], ['Hetauda', 'हेटौंडा'], ['Amlekhgunj', 'अमलेखगञ्ज'], ['Simara', 'सिमरा'], ['Parwanipur', 'परवानीपुर'], ['Birgunj', 'वीरगञ्ज']] },
-    { name: 'Eastern Terai', short: 'Birtamod', level: 3, theme: 'tea', stops: [['Chandranigahapur', 'चन्द्रनिगाहपुर'], ['Bardibas', 'बर्दिबास'], ['Lahan', 'लहान'], ['Itahari', 'इटहरी'], ['Damak', 'दमक'], ['Birtamod', 'बिर्तामोड'], ['Kakarbhitta', 'काँकडभिट्टा']] }
+    { name: 'Eastern Terai', short: 'Biratnagar', level: 3, theme: 'tea', stops: [['Chandranigahapur', 'चन्द्रनिगाहपुर'], ['Bardibas', 'बर्दिबास'], ['Lahan', 'लहान'], ['Itahari', 'इटहरी'], ['Biratnagar', 'विराटनगर'], ['Damak', 'दमक'], ['Birtamod', 'बिर्तामोड'], ['Kakarbhitta', 'काँकडभिट्टा']] }
   ];
   /* After the Ring Road the rider chooses: west (0) to the mountains, or south and east (1) through the Terai */
   const WAYS = [[0, 1, 2, 3], [0, 4, 5]];
@@ -336,7 +340,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   function rollDay() { const d = todayNumber(); if (save.day !== d) { save.day = d; save.best = null; save.tries = 0; } return d; }
 
   /* ---------- Sky: real Nepal time and Kathmandu weather. Looks only, no effect on the road or scoring. ---------- */
-  const SKY_PLACES = ['Kathmandu', 'Mugling', 'Pokhara', 'Jomsom', 'Birgunj', 'Birtamod'];
+  const SKY_PLACES = ['Kathmandu', 'Mugling', 'Pokhara', 'Jomsom', 'Birgunj', 'Biratnagar'];
   const SKY_MODES = [['live', 'Live'], ['day', 'Sunny'], ['night', 'Night'], ['rain', 'Rain'], ['fog', 'Fog']];
   const sky = { phase: 'day', codes: [null, null, null, null, null, null], mode: 'live' };
   try { const m = localStorage.getItem(KEY + '.sky'); if (SKY_MODES.some(x => x[0] === m)) sky.mode = m; } catch (e) { /* no storage */ }
@@ -919,6 +923,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   }
   function drawJaam(c, o) {
     if (o.icon) { c.fillStyle = '#c21b3c'; rr(c, -16, -14, 13, 28, 3); c.fill(); c.fillStyle = '#f0f2f6'; rr(c, 3, -14, 13, 28, 3); c.fill(); return; }
+    /* A flashing red light over the stopped traffic */
+    if (Math.floor(performance.now() / 350) % 2 || reduced) signalHead(c, 200, o.y - 72, false);
     /* A wall of stopped traffic across every lane */
     const list = [drawMicro, drawTempo, drawMicro, drawTempo];
     for (let l = 0; l < 4; l++) {
@@ -1152,7 +1158,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   /* ---------- Game state ---------- */
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let mode = 'home', G = null, freeze = 0, shake = 0, showHint = true, rulesFrom = 'home';
-  const keys = { left: false, right: false };
+  const keys = { left: false, right: false, brake: false };
   let drag = null;
 
   function newGame(seed, attract, level) {
@@ -1193,7 +1199,21 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       g.jam -= dt;
       if (g.jam <= 0) { for (const o of g.objs) if (o.t === 'jaam') o.gone = true; g.jamText = 0; if (!g.attract) sfx.green(); }
     }
-    const v = g.jam > 0 ? 0 : crashed ? Math.max(0, speedOf(g) * (1 - g.crashT / .35)) : speedOf(g) * g.slow * g.surf;
+    /* Brake: held by the rider. Jam ahead: the scooter eases down by itself, so it never stops dead. */
+    g.brakeF = (g.brakeF === undefined ? 1 : g.brakeF) + ((keys.brake && !g.attract && !g.bot ? .35 : 1) - (g.brakeF === undefined ? 1 : g.brakeF)) * Math.min(1, dt * 5);
+    let ease = 1;
+    const jamAhead = g.objs.find(o => o.t === 'jaam' && !o.held && !o.gone);
+    if (jamAhead && !g.attract) {
+      const gap = py - 118 - jamAhead.y;
+      if (gap < 560 && !jamAhead.warned) {
+        jamAhead.warned = true;
+        if (!g.bot) float(g, 200, H * .3, 'Jaam ahead! Brake', '#ffb000');
+      }
+      if (gap < 300) ease = Math.max(.22, gap / 300);
+      if (gap < 300 && keys.brake) jamAhead.braked = true;
+    }
+    g.braking = !crashed && g.jam <= 0 && (g.brakeF < .85 || ease < .85);
+    const v = g.jam > 0 ? 0 : crashed ? Math.max(0, speedOf(g) * (1 - g.crashT / .35)) : speedOf(g) * g.slow * g.surf * g.brakeF * ease;
     g.dist += v * dt;
     spawn(g);
 
@@ -1284,7 +1304,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         o.crossed = true; g.slow = Math.min(g.slow, .72); sfx.bump(); float(g, g.x, py - 44, 'Khola! Splash', '#bfe7ff');
       }
       if (o.t === 'jaam' && !o.held && o.y >= py - 118 && !g.attract && !crashed) {
-        o.held = true; g.jam = 3; sfx.bump(); if (!reduced) shake = .12;
+        o.held = true; g.jam = 3; sfx.bump();
+        if (o.braked) { g.greens++; float(g, g.x, py - 44, 'Smooth stop! +20', '#27d17f'); }
       }
       if (g.attract || crashed || o.gone || o.deco) continue;
 
@@ -1354,6 +1375,11 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       }
       const tilt = g.wobble > 0 && !reduced ? Math.sin(g.t * 19) * .42 * Math.min(1, g.wobble) : Math.max(-.32, Math.min(.32, g.vx / 900)) + (onDirt && !reduced ? Math.sin(g.t * 34) * .05 : 0);
       drawPlayer(ctx, g.x, py, tilt, g.shield, g.inv > 0, g.coat);
+      if (g.braking) {
+        const glow = ctx.createRadialGradient(g.x, py + 26, 1, g.x, py + 26, 13);
+        glow.addColorStop(0, 'rgba(255,45,60,.95)'); glow.addColorStop(1, 'rgba(255,45,60,0)');
+        ctx.fillStyle = glow; ctx.fillRect(g.x - 13, py + 13, 26, 26);
+      }
       const myName = !g.attract && riderName();
       if (myName) {
         ctx.font = '600 11px Mukta, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 3;
@@ -1671,6 +1697,13 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     else if (!nameMissing('riderName', 'nameErr')) start();
   });
   $('retryBtn').addEventListener('click', () => { if (!nameMissing('riderName2', 'nameErr2')) start(); });
+  const brakeBtn = $('brakeBtn');
+  const brakeOn = e => { keys.brake = true; e.preventDefault(); try { brakeBtn.setPointerCapture(e.pointerId); } catch (err) { /* older browsers */ } };
+  const brakeOff = () => { keys.brake = false; };
+  brakeBtn.addEventListener('pointerdown', brakeOn);
+  brakeBtn.addEventListener('pointerup', brakeOff);
+  brakeBtn.addEventListener('pointercancel', brakeOff);
+  brakeBtn.addEventListener('contextmenu', e => e.preventDefault());
   $('wayWest').addEventListener('click', () => chooseWay(0));
   $('wayEast').addEventListener('click', () => chooseWay(1));
   $('pauseBtn').addEventListener('click', pause);
@@ -1696,6 +1729,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       if (e.key === 'ArrowRight') chooseWay(1);
       return;
     }
+    if ((e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') && mode === 'play') { keys.brake = true; e.preventDefault(); }
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { keys.left = true; if (mode === 'play') { e.preventDefault(); if (!e.repeat) stepLane(G, -1); } }
     if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { keys.right = true; if (mode === 'play') { e.preventDefault(); if (!e.repeat) stepLane(G, 1); } }
     if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') { if (mode === 'play') pause(); else if (mode === 'paused' && !ui.pause.hidden) resume(); }
@@ -1703,8 +1737,9 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   addEventListener('keyup', e => {
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
     if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
+    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.brake = false;
   });
-  addEventListener('blur', () => { keys.left = keys.right = false; drag = null; });
+  addEventListener('blur', () => { keys.left = keys.right = keys.brake = false; drag = null; });
   canvas.addEventListener('pointerdown', e => {
     if (mode !== 'play') return;
     drag = { id: e.pointerId, x: e.clientX, lane: laneIndex(G.target), steps: 0, moved: false, at: performance.now() };
@@ -1753,8 +1788,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   };
   const RULES = {
     en: {
-      goalT: 'Your goal', goal: 'Ride as far as you can. Your scooter moves by itself and gets faster, so you only steer. Level 1 is the 27 km Ring Road. Finish it and you choose your way: west to Pokhara, Jomsom and Muktinath, or east through the Terai to Birgunj, Birtamod and Kakarbhitta. After a crash you can restart from any level you have reached. The weather is live for each place, and you can pick your own look.',
-      steerT: 'How to steer', steer: 'The road has 4 lanes. On a phone, tap the left or right side of the screen, or swipe, to move one lane. On a computer, press ← → or A and D. Press P to pause.',
+      goalT: 'Your goal', goal: 'Ride as far as you can. Your scooter moves by itself and gets faster, so you only steer. Level 1 is the 27 km Ring Road. Finish it and you choose your way: west to Pokhara, Jomsom and Muktinath, or east through the Terai to Birgunj, Biratnagar and Kakarbhitta. After a crash you can restart from any level you have reached. The weather is live for each place, and you can pick your own look.',
+      steerT: 'How to steer', steer: 'The road has 4 lanes. On a phone, tap the left or right side of the screen, or swipe, to move one lane. On a computer, press ← → or A and D. Hold the Brake button, or ↓ or S, to slow down. Press P to pause.',
       ghostT: 'Other riders', ghost: "Anyone riding right now is listed at the top of the road. When they are near you on the road, you see a small blue scooter with their name and a green dot. Other small scooters are recordings of today's best rides. None of them can hit you.",
       stop: 'Hit one and your ride ends', slow: 'These make it harder', help: 'These help you',
       items: {
@@ -1762,7 +1797,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         dirt: ['Off-road', 'No tarmac, so you ride much slower'],
         hilo: ['Hilo bato', 'Mud makes the scooter slip'],
         stream: ['Khola on the road', 'Water from the hills slows you'],
-        jaam: ['Jaam', 'Traffic blocks the road, and you wait 3 seconds'],
+        jaam: ['Jaam', 'You slow down and wait 3 seconds. Brake early for +20'],
         wall: ['Narrow road', 'Walls close the outside lanes, so keep to the middle'],
         bike: ['Motorbike', 'Weaves around its lane'], cycle: ['Cycle', 'Slow, and wobbles a little'],
         walker: ['Zebra crossing', 'People walk across, so watch for them'],
@@ -1778,8 +1813,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       dailyT: 'Every day', daily: 'Your first ride today is on the same road as everyone else. Every time you ride again, the traffic moves to new places. Your best score counts, and a new road opens at midnight, Nepal time.'
     },
     ne: {
-      goalT: 'लक्ष्य', goal: 'सकेसम्म टाढा पुग्नुहोस्। स्कुटर आफैं अगाडि बढ्छ र बिस्तारै छिटो हुन्छ, तपाईंले मोड्ने मात्र हो। लेभल १ मा २७ किमीको रिङरोड छ। यो सकेपछि बाटो आफैं छान्नुहोस्: पश्चिम पोखरा, जोमसोम र मुक्तिनाथ, वा पूर्व तराई हुँदै वीरगञ्ज, बिर्तामोड र काँकडभिट्टा। दुर्घटनापछि पुगेको कुनै पनि लेभलबाट फेरि सुरु गर्न सकिन्छ। मौसम हरेक ठाउँको साँचो हुन्छ, चाहेमा आफैं छान्न पनि सकिन्छ।',
-      steerT: 'कसरी मोड्ने', steer: 'सडकमा ४ लेन छन्। फोनमा स्क्रिनको दायाँ वा बायाँ छेउमा ट्याप वा स्वाइप गर्दा एक लेन सर्छ। कम्प्युटरमा ← → वा A र D थिच्नुहोस्। रोक्न P थिच्नुहोस्।',
+      goalT: 'लक्ष्य', goal: 'सकेसम्म टाढा पुग्नुहोस्। स्कुटर आफैं अगाडि बढ्छ र बिस्तारै छिटो हुन्छ, तपाईंले मोड्ने मात्र हो। लेभल १ मा २७ किमीको रिङरोड छ। यो सकेपछि बाटो आफैं छान्नुहोस्: पश्चिम पोखरा, जोमसोम र मुक्तिनाथ, वा पूर्व तराई हुँदै वीरगञ्ज, विराटनगर र काँकडभिट्टा। दुर्घटनापछि पुगेको कुनै पनि लेभलबाट फेरि सुरु गर्न सकिन्छ। मौसम हरेक ठाउँको साँचो हुन्छ, चाहेमा आफैं छान्न पनि सकिन्छ।',
+      steerT: 'कसरी मोड्ने', steer: 'सडकमा ४ लेन छन्। फोनमा स्क्रिनको दायाँ वा बायाँ छेउमा ट्याप वा स्वाइप गर्दा एक लेन सर्छ। कम्प्युटरमा ← → वा A र D थिच्नुहोस्। ढिलो गर्न Brake बटन, ↓ वा S थिचिराख्नुहोस्। रोक्न P थिच्नुहोस्।',
       ghostT: 'अरू खेलाडी', ghost: 'अहिले खेलिरहेकाहरूको नाम बाटोको माथि देखिन्छ। तपाईंको नजिक आउँदा नाम र हरियो थोप्लासहितको सानो निलो स्कुटर देखिन्छ। अरू साना स्कुटर आजका उत्कृष्ट राइडका रेकर्डिङ हुन्। कसैले ठोक्दैनन्।',
       stop: 'ठोक्किनुभयो भने खेल सकिन्छ', slow: 'यिनले गाह्रो बनाउँछन्', help: 'यिनले मद्दत गर्छन्',
       items: {
@@ -1787,7 +1822,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         dirt: ['कच्ची बाटो', 'पिच हुँदैन, स्कुटर निकै ढिलो चल्छ'],
         hilo: ['हिलो बाटो', 'हिलोमा स्कुटर चिप्लिन्छ'],
         stream: ['बाटोमा खोला', 'पहाडको पानीले ढिलो बनाउँछ'],
-        jaam: ['जाम', 'गाडीले बाटो छेक्छ, ३ सेकेन्ड पर्खनुपर्छ'],
+        jaam: ['जाम', 'ढिलो भएर ३ सेकेन्ड पर्खनुपर्छ। पहिल्यै ब्रेक लगाए +२०'],
         wall: ['साँघुरो बाटो', 'छेउका लेन बन्द हुन्छन्, बीचमा बस्नुहोस्'],
         bike: ['मोटरबाइक', 'लेनभित्रै घुमाउँदै चल्छ'], cycle: ['साइकल', 'ढिलो चल्छ, अलिअलि हल्लिन्छ'],
         walker: ['जेब्रा क्रसिङ', 'मानिस बाटो काट्छन्, ध्यान दिनुहोस्'],
