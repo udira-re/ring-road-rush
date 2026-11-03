@@ -34,11 +34,19 @@ async function saveEvent(request, env) {
   if (problem) return json({ error: problem }, 422);
   const end = body.type === 'end';
   const name = typeof body.name === 'string' ? body.name.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '';
-  await env.DB.prepare(
-    `INSERT INTO events (player_id, type, day, road, device, km, score, momos, cause, created_at, name)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(body.player, body.type, nepalDay(), body.road, body.device,
-    end ? body.km : null, end ? body.score : null, end ? body.momos : null, end ? body.cause : null, Date.now(), name || null).run();
+  const now = Date.now();
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO events (player_id, type, day, road, device, km, score, momos, cause, created_at, name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(body.player, body.type, nepalDay(), body.road, body.device,
+      end ? body.km : null, end ? body.score : null, end ? body.momos : null, end ? body.cause : null, now, name || null),
+    // One row per rider: their current name and when they were first and last seen.
+    env.DB.prepare(
+      `INSERT INTO riders (player_id, name, first_seen, last_seen) VALUES (?, ?, ?, ?)
+       ON CONFLICT (player_id) DO UPDATE SET name = COALESCE(excluded.name, riders.name), last_seen = excluded.last_seen`
+    ).bind(body.player, name || null, now, now)
+  ]);
   return json({ ok: true }, 201);
 }
 
@@ -157,6 +165,16 @@ async function ghosts(env) {
   return json({ ghosts: results.map(g => ({ ...g, path: JSON.parse(g.path) })) });
 }
 
+// Top scores for today and the last 7 days, using each rider's best ride.
+async function leaderboard(env) {
+  const q = `SELECT substr(e.player_id, 1, 4) AS id, r.name AS name, MAX(e.score) AS score, MAX(e.km) AS km
+    FROM events e LEFT JOIN riders r ON r.player_id = e.player_id
+    WHERE e.type = 'end' AND e.day >= ? GROUP BY e.player_id ORDER BY score DESC LIMIT 20`;
+  const today = nepalDay();
+  const [day, week] = await env.DB.batch([env.DB.prepare(q).bind(today), env.DB.prepare(q).bind(today - 6)]);
+  return json({ today: day.results, week: week.results }, 200, { 'Cache-Control': 'public, max-age=20' });
+}
+
 // Player list for the stats page. Only a short ID leaves the server, never the full one.
 async function players(env) {
   const [list, recent] = await env.DB.batch([
@@ -203,6 +221,10 @@ export default {
         if (request.method === 'POST') return await saveGhost(request, env);
         if (request.method === 'GET') return await ghosts(env);
         return json({ error: 'Use GET or POST.' }, 405, { Allow: 'GET, POST' });
+      }
+      if (pathname === '/api/leaderboard') {
+        if (request.method !== 'GET') return json({ error: 'Use GET.' }, 405, { Allow: 'GET' });
+        return await leaderboard(env);
       }
       if (pathname === '/api/players') {
         if (request.method !== 'GET') return json({ error: 'Use GET.' }, 405, { Allow: 'GET' });
