@@ -71,6 +71,39 @@ async function stats(env) {
   }, 200, { 'Cache-Control': 'public, max-age=30' });
 }
 
+// Live riders: one row per rider on the road. A rider who stops updating drops off after a few seconds.
+const LIVE_WINDOW_MS = 12000;
+const liveList = (env, now) => env.DB.prepare(
+  `SELECT substr(player_id, 1, 4) AS id, name, d, x, v FROM live WHERE updated_at > ? ORDER BY d DESC LIMIT 20`
+).bind(now - LIVE_WINDOW_MS);
+async function saveLive(request, env) {
+  let b;
+  try { b = await request.json(); } catch { return json({ error: 'Send valid JSON.' }, 400); }
+  if (!b || typeof b.player !== 'string' || !ID_PATTERN.test(b.player)) return json({ error: 'player must be a random ID.' }, 422);
+  if (b.done === true) {
+    await env.DB.prepare('DELETE FROM live WHERE player_id = ?').bind(b.player).run();
+    return json({ ok: true });
+  }
+  if (!Number.isInteger(b.d) || !inRange(b.d, 0, 1000000) || !Number.isInteger(b.x) || !inRange(b.x, 0, 400) || !Number.isInteger(b.v) || !inRange(b.v, 0, 2000)) {
+    return json({ error: 'Position is out of range.' }, 422);
+  }
+  if (b.name !== undefined && (typeof b.name !== 'string' || b.name.length > 24)) return json({ error: 'name must be 24 characters or fewer.' }, 422);
+  const name = typeof b.name === 'string' ? b.name.replace(/[\u0000-\u001f\u007f]/g, '').trim() : '';
+  const now = Date.now();
+  const [, list] = await env.DB.batch([
+    env.DB.prepare(`INSERT INTO live (player_id, name, d, x, v, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT (player_id) DO UPDATE SET name = excluded.name, d = excluded.d, x = excluded.x, v = excluded.v, updated_at = excluded.updated_at`)
+      .bind(b.player, name || null, b.d, b.x, b.v, now),
+    liveList(env, now)
+  ]);
+  if (Math.random() < .01) await env.DB.prepare('DELETE FROM live WHERE updated_at < ?').bind(now - 3600000).run();
+  return json({ riders: list.results });
+}
+async function readLive(env) {
+  const { results } = await liveList(env, Date.now()).all();
+  return json({ riders: results });
+}
+
 // Current Kathmandu weather code, fetched here so players' browsers never contact a third party.
 async function skyNow() {
   try {
@@ -159,6 +192,11 @@ export default {
       if (pathname === '/api/stats') {
         if (request.method !== 'GET') return json({ error: 'Use GET.' }, 405, { Allow: 'GET' });
         return await stats(env);
+      }
+      if (pathname === '/api/live') {
+        if (request.method === 'POST') return await saveLive(request, env);
+        if (request.method === 'GET') return await readLive(env);
+        return json({ error: 'Use GET or POST.' }, 405, { Allow: 'GET, POST' });
       }
       if (pathname === '/api/sky') return await skyNow();
       if (pathname === '/api/ghosts') {
