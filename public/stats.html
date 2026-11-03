@@ -31,7 +31,7 @@ p { margin: 0; color: var(--muted); }
 <section><h2>What ended rides</h2><table id="crashes"></table></section>
 <section><h2>Devices</h2><table id="devices"></table></section>
 </main><script>
-const NAMES = { cow:'Cow', micro:'Microbus', tempo:'Safa Tempo', truck:'Truck', dog:'Street dog', dig:'Dug-up road', bike:'Motorbike', cycle:'Cycle', walker:'Zebra crossing' };
+const NAMES = { cow:'Cow', micro:'Microbus', tempo:'Safa Tempo', truck:'Truck', dog:'Street dog', dig:'Dug-up road', bike:'Motorbike', cycle:'Cycle', walker:'Zebra crossing', bridge:'Closed bridge', wall:'Narrow road' };
 const n = v => Number(v || 0).toLocaleString('en-US');
 function table(id, heads, rows) {
   const t = document.getElementById(id); t.textContent = '';
