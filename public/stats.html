@@ -23,6 +23,7 @@ p { margin: 0; color: var(--muted); }
 <h1>Ring Road Rush stats</h1>
 <p id="msg">Loading…</p>
 <div class="tiles" id="tiles"></div>
+<section><h2>This week's top riders</h2><div class="wide"><table id="week"></table></div></section>
 <section><h2>Riding now</h2><p id="liveNone">Nobody is on the road at the moment.</p><table id="live"></table></section>
 <section><h2>Who's playing</h2><div class="wide"><table id="players"></table></div></section>
 <section><h2>Latest rides</h2><div class="wide"><table id="rides"></table></div></section>
@@ -54,6 +55,9 @@ const loadLive = () => fetch('/api/live', { cache: 'no-store' }).then(r => r.ok 
   table('live', d.riders.length ? ['Rider','km'] : [], d.riders.map(r => [who(r), ((r.d * 10) / 3333).toFixed(1)]));
 }).catch(() => {});
 loadLive(); setInterval(loadLive, 5000);
+fetch('/api/leaderboard').then(r => r.ok ? r.json() : null).then(d => {
+  if (d) table('week', ['#','Rider','Score','Farthest km'], d.week.map((r, i) => [String(i + 1), who(r), n(r.score), r.km.toFixed(1)]));
+}).catch(() => {});
 fetch('/api/players').then(r => { if (!r.ok) throw 0; return r.json(); }).then(d => {
   table('players', ['Rider','Rides','Days played','Farthest km','Best score','Momos','Device','First played','Last played'],
     d.players.map(p => [who(p), n(p.rides), n(p.days), p.best_km == null ? '-' : p.best_km.toFixed(1), n(p.best_score), n(p.momos), p.devices || '-', when(p.first_seen), when(p.last_seen)]));
