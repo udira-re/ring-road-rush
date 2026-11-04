@@ -51,6 +51,10 @@ The road's look follows Nepal time and the current weather for each level's plac
 { "player": "random-id", "type": "end", "road": 1, "device": "phone", "km": 12.4, "score": 1500, "momos": 10, "cause": "cow" }
 ```
 
+`GET /api/top` returns who holds today's best score. It is the only score data the game shows.
+
+These need the `STATS_KEY` secret in an `x-stats-key` header, and stay closed if it isn't set:
+
 `GET /api/stats` returns players, rides, returning players, crash causes, devices and the last 14 days.
 
 `POST /api/ghosts` saves a rider's best ride of the day, and `GET /api/ghosts` returns today's top 6 to replay as ghost scooters.
@@ -63,7 +67,11 @@ The road's look follows Nepal time and the current weather for each level's plac
 
 ## Privacy
 
-A player is a random ID saved in the browser. A rider can type a name, which then shows on the public stats page. The game does not store IP addresses or locations.
+A player is a random ID saved in the browser. A rider types a name, which other riders can see. Rider data is only available to the owner, on the password-protected stats page. The game does not store IP addresses or locations.
+
+## Private stats
+
+Set the password with `npx wrangler secret put STATS_KEY`, or under Variables and Secrets in the Cloudflare dashboard. Then open `/stats.html`.
 
 ## Project layout
 
