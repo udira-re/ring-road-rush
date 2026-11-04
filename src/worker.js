@@ -2,7 +2,7 @@
 // only /api/* reaches this code.
 const NPT_MS = 20700000; // Nepal is UTC+5:45
 const DAY_MS = 86400000;
-const CAUSES = new Set(['cow', 'micro', 'tempo', 'truck', 'dog', 'dig', 'bike', 'cycle', 'walker', 'bridge', 'wall']);
+const CAUSES = new Set(['cow', 'micro', 'tempo', 'truck', 'dog', 'dig', 'bike', 'cycle', 'walker', 'bridge', 'wall', 'bus']);
 const DEVICES = new Set(['phone', 'computer']);
 const ID_PATTERN = /^[A-Za-z0-9-]{8,64}$/;
 
@@ -166,6 +166,25 @@ async function ghosts(env) {
   return json({ ghosts: results.map(g => ({ ...g, path: JSON.parse(g.path) })) });
 }
 
+// Owner-only data needs the STATS_KEY secret. With no secret set, it stays closed to everyone.
+async function ownerOnly(request, env) {
+  const given = request.headers.get('x-stats-key') || '';
+  const key = env.STATS_KEY || '';
+  if (!key || given.length !== key.length) return false;
+  let diff = 0;
+  for (let i = 0; i < key.length; i++) diff |= key.charCodeAt(i) ^ given.charCodeAt(i);
+  return diff === 0;
+}
+
+// The one public score: who holds today's best.
+async function topRider(env) {
+  const row = await env.DB.prepare(
+    `SELECT r.name AS name, e.score AS score FROM events e LEFT JOIN riders r ON r.player_id = e.player_id
+     WHERE e.type = 'end' AND e.day = ? ORDER BY e.score DESC LIMIT 1`
+  ).bind(nepalDay()).first();
+  return json({ top: row ? { name: row.name, score: row.score } : null }, 200, { 'Cache-Control': 'public, max-age=20' });
+}
+
 // Top scores for today and the last 7 days, using each rider's best ride.
 async function leaderboard(env) {
   const q = `SELECT substr(e.player_id, 1, 4) AS id, r.name AS name, MAX(e.score) AS score, MAX(e.km) AS km
@@ -208,9 +227,16 @@ export default {
         if (request.method !== 'POST') return json({ error: 'Use POST.' }, 405, { Allow: 'POST' });
         return await saveEvent(request, env);
       }
-      if (pathname === '/api/stats') {
+      if (pathname === '/api/top') {
         if (request.method !== 'GET') return json({ error: 'Use GET.' }, 405, { Allow: 'GET' });
-        return await stats(env);
+        return await topRider(env);
+      }
+      if (pathname === '/api/stats' || pathname === '/api/players' || pathname === '/api/leaderboard') {
+        if (request.method !== 'GET') return json({ error: 'Use GET.' }, 405, { Allow: 'GET' });
+        if (!await ownerOnly(request, env)) return json({ error: 'This data is private.' }, 401);
+        if (pathname === '/api/stats') return await stats(env);
+        if (pathname === '/api/players') return await players(env);
+        return await leaderboard(env);
       }
       if (pathname === '/api/live') {
         if (request.method === 'POST') return await saveLive(request, env);
@@ -222,14 +248,6 @@ export default {
         if (request.method === 'POST') return await saveGhost(request, env);
         if (request.method === 'GET') return await ghosts(env);
         return json({ error: 'Use GET or POST.' }, 405, { Allow: 'GET, POST' });
-      }
-      if (pathname === '/api/leaderboard') {
-        if (request.method !== 'GET') return json({ error: 'Use GET.' }, 405, { Allow: 'GET' });
-        return await leaderboard(env);
-      }
-      if (pathname === '/api/players') {
-        if (request.method !== 'GET') return json({ error: 'Use GET.' }, 405, { Allow: 'GET' });
-        return await players(env);
       }
       return json({ error: 'Not found.' }, 404);
     } catch (err) {
