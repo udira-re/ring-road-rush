@@ -53,13 +53,8 @@ canvas#game { display: block; width: 100%; height: 100%; touch-action: none; use
 .track i.end { background: var(--crimson); }
 
 .hud-chip { justify-self: start; background: var(--marigold); color: var(--navy); font-size: 13px; font-weight: 800; padding: 0 8px; border-radius: 3px; }
-.board { display: grid; gap: 4px; font-variant-numeric: tabular-nums; }
-.board h3 { margin: 0; font: 800 14px var(--body); color: var(--marigold); }
-.board ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; font-size: 14px; }
-.board li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 6px; }
-.board li span:nth-child(2) { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.board li.me { color: var(--marigold); font-weight: 800; }
-.board a { color: var(--paper); font-size: 14px; }
+.board { margin: 0; font-size: 14px; font-weight: 600; color: var(--marigold); font-variant-numeric: tabular-nums; }
+.rules-foot .board { text-align: center; }
 .levels { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; min-width: 0; min-height: 34px; flex-shrink: 0; padding-block: 2px; }
 .levels::-webkit-scrollbar { display: none; }
 .levels span, .levels button { flex: none; white-space: nowrap; }
@@ -192,6 +187,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         </div>
         <button class="btn" id="startBtn" type="button">Start riding</button>
         <div class="levels" id="levelsHome" hidden></div>
+        <p class="board" id="boardHome" hidden></p>
         <p class="live-now" id="liveHome" hidden></p>
         <p class="note" id="riders" hidden></p>
       </div>
@@ -258,7 +254,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       <div><b id="sideTries">0</b><span>Tries today</span></div>
       <div><b id="sideStreak">0</b><span>Day streak</span></div>
     </div>
-    <p class="sub">Change lane with ← →, or by tapping or swiping. Hold Brake, ↓ or S to slow down. Press P to pause.</p>
+    <p class="sub">Change lane with ← →, or by tapping or swiping. Hold Space to brake. Press P to pause.</p>
     <div class="board" id="boardSide" hidden></div>
   </aside>
 </div>
@@ -311,11 +307,12 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     cow: ['Gai le bato chhodena', 'The cow did not move. It never moves.'],
     micro: ['Microbus rokiyo, tapai rokinu bhayena', 'The microbus stopped for a passenger. You did not.'],
     tempo: ['Safa Tempo ma thokkiyo', 'You lost to a three-wheeler.'],
-    truck: ['Horn Please lekheko thiyo', 'The truck did ask you to honk.'],
+    truck: ['Truck ma thokkiyo', 'You hit the back of a truck. It even said Horn Please.'],
     dog: ['Kukur le jityo', 'A street dog had right of way.'],
     dig: ['Bato feri khaneko rahecha', 'The road was dug up again. Probably pipes.'],
     bike: ['Bike le side kaatyo', 'A bike cut in from nowhere.'],
     cycle: ['Cycle sanga pani haariyo', 'You lost to a cycle carrying saag.'],
+    bus: ['Bus le side didaina', 'The public bus stops for anyone, anywhere.'],
     wall: ['Bato sano thiyo', 'The road got narrow. The wall did not move.'],
     bridge: ['Pul banda thiyo', 'The bridge was closed. It has been almost ready for years.'],
     walker: ['Zebra crossing ma manchhe thiyo', 'Someone was crossing the road. That one is on you.']
@@ -434,27 +431,17 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     const body = JSON.stringify({ player: getPlayerId(), done: true });
     try { navigator.sendBeacon(API + '/live', new Blob([body], { type: 'application/json' })); } catch (e) { /* the entry expires by itself */ }
   }
+  /* The game only ever shows one line: who holds today's best score */
   function loadBoard() {
     if (!API) return;
-    fetch(API + '/leaderboard', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => {
-      if (!d || !Array.isArray(d.today) || !d.today.length) return;
-      const me = getPlayerId().slice(0, 4);
-      for (const [id, count] of [['boardResult', 5], ['boardSide', 10]]) {
+    fetch(API + '/top', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => {
+      if (!d || !d.top) return;
+      const mine = save.best && save.best.score >= d.top.score;
+      const text = mine ? "You hold today's best: " + d.top.score.toLocaleString('en-US')
+        : "Today's best: " + (d.top.name || 'A rider') + ' ' + d.top.score.toLocaleString('en-US');
+      for (const id of ['boardResult', 'boardSide', 'boardHome']) {
         const box = document.getElementById(id);
-        if (!box) continue;
-        box.textContent = '';
-        const h = document.createElement('h3'); h.textContent = "Today's top riders"; box.appendChild(h);
-        const ol = document.createElement('ol');
-        d.today.slice(0, count).forEach((r, i) => {
-          const li = document.createElement('li');
-          if (r.id === me) li.className = 'me';
-          for (const t of [String(i + 1), r.name || 'Rider ' + r.id, r.score.toLocaleString('en-US')]) { const c = document.createElement('span'); c.textContent = t; li.appendChild(c); }
-          ol.appendChild(li);
-        });
-        box.appendChild(ol);
-        const a = document.createElement('a'); a.href = '/stats.html'; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'See all riders and this week';
-        box.appendChild(a);
-        box.hidden = false;
+        if (box) { box.textContent = text; box.hidden = false; }
       }
     }).catch(() => {});
   }
@@ -528,7 +515,10 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       switch (type) {
         case 'pothole': return { t: 'pothole', x: laneX(lane) + (rng() - .5) * 20, w: 46, h: 30, rate: 1, soft: true };
         case 'cow': { const dir = lane < 2 ? 1 : -1; return { t: 'cow', x: laneX(lane), w: 60, h: 34, rate: 1, vx: dir * (8 + rng() * 14) }; }
-        case 'tempo': return { t: 'tempo', x: laneX(lane), w: 40, h: 58, rate: .72 };
+        case 'tempo':
+          /* Safa Tempos stay in the valley; outside it, the slow vehicle is a public bus */
+          if (themeAtPx(at) !== 'city') return { t: 'bus', x: laneX(lane), w: 58, h: 104, rate: .76, paint: Math.floor(rng() * 3) };
+          return { t: 'tempo', x: laneX(lane), w: 40, h: 58, rate: .72 };
         case 'micro': {
           const d = Math.min(1, effKm() / LAP_KM);
           const swerve = rng() < .35 + d * .3;
@@ -687,13 +677,42 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     if (o.blink && Math.floor(performance.now() / 110) % 2) { c.fillStyle = '#ffb000'; const s = o.toX < o.x ? -1 : 1; c.fillRect(s * 26 - 4, 34, 8, 9); c.fillRect(s * 26 - 4, -44, 8, 9); }
     c.restore();
   }
+  function drawBus(c, o) {
+    c.save(); c.translate(o.x || 0, o.y || 0);
+    const colors = [['#1f6f8b', '#ffb000'], ['#b5342c', '#fff4dc'], ['#2d7d46', '#ffb000']][o.paint || 0];
+    c.fillStyle = '#14141a'; for (const y of [-40, 26]) { c.fillRect(-31, y, 5, 18); c.fillRect(26, y, 5, 18); }
+    c.fillStyle = colors[0]; rr(c, -28, -52, 56, 104, 9); c.fill();
+    c.fillStyle = colors[1]; c.fillRect(-28, -14, 56, 7); c.fillRect(-28, 16, 56, 5);
+    c.fillStyle = '#9fc6d8'; rr(c, -22, -47, 44, 15, 4); c.fill(); rr(c, -21, 33, 42, 11, 3); c.fill();
+    /* Roof rack with passengers' luggage, as on long-route buses */
+    c.fillStyle = '#7a4a26'; c.fillRect(-18, -28, 36, 40);
+    c.fillStyle = '#d7c7a8'; rr(c, -14, -24, 13, 14, 2); c.fill(); c.fillStyle = '#c21b3c'; rr(c, 2, -22, 12, 12, 2); c.fill(); c.fillStyle = '#23408c'; rr(c, -11, -6, 22, 14, 2); c.fill();
+    c.fillStyle = '#ff2d3c'; c.fillRect(-26, 46, 8, 4); c.fillRect(18, 46, 8, 4);
+    c.restore();
+  }
   function drawTruck(c, o) {
     c.save(); c.translate(o.x, o.y);
-    c.fillStyle = '#c21b3c'; rr(c, -62, -75, 124, 150, 5); c.fill();
-    c.fillStyle = '#ffb000'; c.fillRect(-62, 40, 124, 35);
-    c.fillStyle = '#003893'; for (let i = 0; i < 6; i++) { c.beginPath(); c.moveTo(-62 + i * 21, 40); c.lineTo(-52 + i * 21, 28); c.lineTo(-41 + i * 21, 40); c.fill(); }
-    c.fillStyle = '#0d1a4a'; c.font = '400 14px "Rozha One", serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('HORN PLEASE', 0, 59);
-    c.strokeStyle = 'rgba(255,255,255,.3)'; c.lineWidth = 2; for (let i = -1; i <= 1; i++) { c.beginPath(); c.moveTo(i * 30, -68); c.lineTo(i * 30, 22); c.stroke(); }
+    /* Wheels stick out on both sides */
+    c.fillStyle = '#14141a';
+    for (const y of [-58, 8, 34]) { c.fillRect(-62, y, 7, 22); c.fillRect(55, y, 7, 22); }
+    /* Cab at the front, with windscreen and mirrors */
+    c.fillStyle = '#d9a441'; rr(c, -46, -75, 92, 40, 9); c.fill();
+    c.fillStyle = '#9fc6d8'; rr(c, -36, -71, 72, 13, 4); c.fill();
+    c.fillStyle = '#14141a'; c.fillRect(-57, -64, 11, 4); c.fillRect(46, -64, 11, 4);
+    c.fillStyle = '#c21b3c'; c.fillRect(-46, -49, 92, 5);
+    /* Cargo bed with wooden rails and a load of sacks */
+    c.fillStyle = '#7a4a26'; c.fillRect(-56, -35, 112, 76);
+    c.fillStyle = '#4d7c8c'; rr(c, -49, -29, 98, 64, 5); c.fill();
+    c.strokeStyle = 'rgba(255,255,255,.35)'; c.lineWidth = 2;
+    for (let i = -1; i <= 1; i++) { c.beginPath(); c.moveTo(i * 26, -29); c.lineTo(i * 26, 35); c.stroke(); }
+    /* Painted back of the truck: the part you see when you ride behind it */
+    c.fillStyle = '#c21b3c'; c.fillRect(-58, 41, 116, 34);
+    c.fillStyle = '#ffb000'; for (let i = 0; i < 8; i++) { c.beginPath(); c.moveTo(-58 + i * 14.5, 41); c.lineTo(-51 + i * 14.5, 47); c.lineTo(-43.5 + i * 14.5, 41); c.fill(); }
+    c.fillStyle = '#fff4dc'; c.font = '800 14px Mukta, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('HORN PLEASE', 0, 56);
+    c.font = '600 11px Mukta, sans-serif'; c.fillText('हर्न बजाउनुहोस्', 0, 68);
+    /* Tail lights */
+    c.fillStyle = '#ff2d3c'; c.fillRect(-58, 53, 7, 14); c.fillRect(51, 53, 7, 14);
     c.restore();
   }
   function drawDog(c, o) {
@@ -873,7 +892,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       /* Tail lights and reflectors, so traffic shows up before you can see it clearly */
       for (const o of g.objs) {
         if (o.y < -20 || o.y > py + 40 || !o.h) continue;
-        const vehicle = o.t === 'micro' || o.t === 'tempo' || o.t === 'truck' || o.t === 'bike' || o.t === 'cycle';
+        const vehicle = o.t === 'bus' || o.t === 'micro' || o.t === 'tempo' || o.t === 'truck' || o.t === 'bike' || o.t === 'cycle';
         if (!vehicle && o.t !== 'cow' && o.t !== 'dig' && o.t !== 'bridge') continue;
         const by = o.y + o.h / 2 - 3, gap = Math.max(4, o.w / 2 - 5), col = vehicle ? '255,45,60' : '255,176,0';
         for (const dx of o.w > 26 ? [-gap, gap] : [0]) {
@@ -1017,7 +1036,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     c.fillStyle = '#c9a97a';
     for (const p of [[-10, 4, 11], [8, 5, 12], [0, -6, 13], [-16, -4, 7], [16, -4, 8]]) { c.beginPath(); c.arc(p[0], p[1], p[2], 0, 7); c.fill(); }
   }
-  const ART = { cow: drawCow, pothole: drawPothole, tempo: drawTempo, micro: drawMicro, truck: drawTruck, dog: drawDog, dig: drawDig, momo: drawMomo, helmet: drawHelmet, bike: drawBike, cycle: drawCycle, walker: drawWalker, signal: drawSignal, shelter: drawShelter, bridge: drawBridge, bypass: drawBypass, bridgesign: drawBridgeSign, hilo: drawHilo, stream: drawStream, jaam: drawJaam, wall: drawWall, roadsign: drawRoadSign, checkpoint: drawCheckpoint };
+  const ART = { bus: drawBus, cow: drawCow, pothole: drawPothole, tempo: drawTempo, micro: drawMicro, truck: drawTruck, dog: drawDog, dig: drawDig, momo: drawMomo, helmet: drawHelmet, bike: drawBike, cycle: drawCycle, walker: drawWalker, signal: drawSignal, shelter: drawShelter, bridge: drawBridge, bypass: drawBypass, bridgesign: drawBridgeSign, hilo: drawHilo, stream: drawStream, jaam: drawJaam, wall: drawWall, roadsign: drawRoadSign, checkpoint: drawCheckpoint };
 
   const SHOULDER = { city: '#8f8a7c', hills: '#7a6a4f', lake: '#8f8a7c', himal: '#8a7c68', terai: '#9a8a62', tea: '#8c7f5c' };
   const ROAD_TONE = { city: '#3a3c48', hills: '#3f4049', lake: '#3c3f4c', himal: '#615a50', terai: '#454650', tea: '#41434d' };
@@ -1216,7 +1235,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   function stepLane(g, d) { g.target = laneX(Math.max(0, Math.min(3, laneIndex(g.target) + d))); }
   function float(g, x, y, txt, color) { g.floats.push({ x, y, txt, color: color || '#fff4dc', life: 1 }); }
 
-  const TRAFFIC_BLOCKS = { micro: 1, tempo: 1, truck: 1, bike: 1, cycle: 1, cow: 1, dig: 1, bridge: 1, wall: 1 };
+  const TRAFFIC_BLOCKS = { bus: 1, micro: 1, tempo: 1, truck: 1, bike: 1, cycle: 1, cow: 1, dig: 1, bridge: 1, wall: 1 };
   function spawn(g) {
     if (!g.row) g.row = g.road.next();
     while (g.dist >= g.row.at) {
@@ -1224,7 +1243,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         if (it.t === 'dust') { g.dust = 3.5; if (!g.attract) float(g, 200, 90, 'Dhulo! Hold your line', '#ffe7b0'); continue; }
         if (it.t === 'shelter' && (g.coat || skyAt(routeAt(Math.floor(kmOf(g) / SEG_KM) + 1).si).weather !== 'rain')) continue;
         const placed = Object.assign({}, it, { y: -80 - (it.off || 0) - (g.dist - g.row.at) });
-        if (it.police) placed.lines = [mapaseNow(g) ? 'Mapase check ahead' : 'Licence check ahead', 'Hold Brake to stop'];
+        if (it.police) placed.lines = [mapaseNow(g) ? 'Mapase check ahead' : 'Licence check ahead', 'Brake to stop'];
         g.objs.push(placed);
       }
       g.row = g.road.next();
@@ -1430,7 +1449,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     ctx.save();
     if (shake > 0) ctx.translate((hash(performance.now()) - .5) * 12 * shake * 2, (hash(performance.now() + 7) - .5) * 12 * shake * 2);
     drawScenery(g.dist);
-    const py = playerY(), order = { stream: -2, wall: -1, hilo: 0, roadsign: 0, checkpoint: 3, jaam: 4, bypass: -1, bridgesign: 0, bridge: 2, shelter: 0, walker: 0, pothole: 0, momo: 1, helmet: 1, dig: 2, dog: 3, cow: 3, cycle: 3, bike: 4, tempo: 4, micro: 4, truck: 5, signal: 6 };
+    const py = playerY(), order = { stream: -2, wall: -1, hilo: 0, roadsign: 0, checkpoint: 3, jaam: 4, bypass: -1, bridgesign: 0, bridge: 2, shelter: 0, walker: 0, pothole: 0, momo: 1, helmet: 1, dig: 2, dog: 3, cow: 3, cycle: 3, bike: 4, tempo: 4, bus: 4, micro: 4, truck: 5, signal: 6 };
     /* painted gate on the road, behind traffic */
     for (let i = g.gate - 1; i <= g.gate + 1; i++) if (i > 0) drawGate(i, py - (i * SEG_KM * PX_PER_KM - g.dist));
     renderGhosts(g, py);
@@ -1810,7 +1829,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       if (e.key === 'ArrowRight') chooseWay(1);
       return;
     }
-    if ((e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') && mode === 'play') { keys.brake = true; e.preventDefault(); }
+    if ((e.key === ' ' || e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') && mode === 'play') { keys.brake = true; e.preventDefault(); }
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') { keys.left = true; if (mode === 'play') { e.preventDefault(); if (!e.repeat) stepLane(G, -1); } }
     if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') { keys.right = true; if (mode === 'play') { e.preventDefault(); if (!e.repeat) stepLane(G, 1); } }
     if (e.key === 'p' || e.key === 'P' || e.key === 'Escape') { if (mode === 'play') pause(); else if (mode === 'paused' && !ui.pause.hidden) resume(); }
@@ -1818,7 +1837,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
   addEventListener('keyup', e => {
     if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keys.left = false;
     if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keys.right = false;
-    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keys.brake = false;
+    if (e.key === ' ' || e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') { if (e.key === ' ' && mode === 'play') e.preventDefault(); keys.brake = false; }
   });
   addEventListener('blur', () => { keys.left = keys.right = keys.brake = false; drag = null; });
   canvas.addEventListener('pointerdown', e => {
@@ -1862,15 +1881,15 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     return c;
   }
   const ICONS = {
-    cow: [drawCow, { w: 60, h: 34 }, .9], micro: [drawMicro, { w: 52, h: 90 }, .62], tempo: [drawTempo, {}, .9],
-    truck: [drawTruck, {}, .36], dog: [drawDog, { dogV: 1 }, 1.2], dig: [drawDig, { w: 78, h: 34 }, .7],
+    cow: [drawCow, { w: 60, h: 34 }, .9], micro: [drawMicro, { w: 52, h: 90 }, .62], tempo: [drawTempo, {}, .9], bus: [drawBus, {}, .56],
+    truck: [drawTruck, {}, .4], dog: [drawDog, { dogV: 1 }, 1.2], dig: [drawDig, { w: 78, h: 34 }, .7],
     bike: [drawBike, {}, 1.3], cycle: [drawCycle, {}, 1.3], walker: [drawWalker, { icon: true }, 1.6], signal: [drawSignal, { icon: true }, .9],
     bridge: [drawBridgeIcon, {}, 1.2], dirt: [drawDirtIcon, {}, 1.2], hilo: [drawHilo, { icon: true }, 1.1], stream: [drawStream, { icon: true }, 1], jaam: [drawJaam, { icon: true }, 1], wall: [drawWall, { icon: true }, 1], police: [drawCheckpoint, { icon: true }, 1.4], mapase: [drawCheckpoint, { icon: true, device: true }, 1.4], shelter: [drawShelter, { icon: true }, .8], pothole: [drawPothole, {}, 1], dust: [drawDust, {}, 1], momo: [drawMomo, {}, 1.5], helmet: [drawHelmet, {}, 1.4]
   };
   const RULES = {
     en: {
       goalT: 'Your goal', goal: 'Ride as far as you can. Your scooter moves by itself and gets faster, so you only steer. Level 1 is the 27 km Ring Road. Finish it and you choose your way: west to Pokhara, Jomsom and Muktinath, or east through the Terai to Birgunj, Biratnagar and Kakarbhitta. After a crash you can restart from any level you have reached. The weather is live for each place, and you can pick your own look.',
-      steerT: 'How to steer', steer: 'The road has 4 lanes. On a phone, tap the left or right side of the screen, or swipe, to move one lane. On a computer, press ← → or A and D. Hold the Brake button, or ↓ or S, to slow down. Press P to pause.',
+      steerT: 'How to steer', steer: 'The road has 4 lanes. On a phone, tap the left or right side of the screen, or swipe, to move one lane. On a computer, press ← → or A and D. To slow down, hold Space on a computer or the Brake button on a phone. Press P to pause.',
       ghostT: 'Other riders', ghost: "Anyone riding right now is listed at the top of the road. When they are near you on the road, you see a small blue scooter with their name and a green dot. Other small scooters are recordings of today's best rides. None of them can hit you.",
       stop: 'Hit one and your ride ends', slow: 'These make it harder', help: 'These help you',
       items: {
@@ -1886,7 +1905,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         walker: ['Zebra crossing', 'People walk across, so watch for them'],
         signal: ['Traffic light', 'Ride under a green arrow. A red X costs 100 points and slows you'],
         cow: ['Gai', 'Stands in the road and walks slowly'], micro: ['Microbus', 'An orange blinker means it is changing lane'],
-        tempo: ['Safa Tempo', 'Moves slower than you'], truck: ['Truck', 'Takes up two lanes'],
+        tempo: ['Safa Tempo', 'Moves slower than you, in Kathmandu'],
+        bus: ['Public bus', 'Slow and wide, outside Kathmandu'], truck: ['Truck', 'Big cargo truck that blocks two lanes'],
         dog: ['Kukur', 'Runs across the road'], dig: ['Dug-up road', 'Only one lane stays open'],
         pothole: ['Khaldo', 'Slows you and shakes your scooter off balance'], dust: ['Dhulo', 'Hides the road ahead for about 3 seconds'],
         shelter: ['Pati (rain stop)', 'Only when it rains. Ride under it for a raincoat: less rain, +25 points'],
@@ -1897,7 +1917,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     },
     ne: {
       goalT: 'लक्ष्य', goal: 'सकेसम्म टाढा पुग्नुहोस्। स्कुटर आफैं अगाडि बढ्छ र बिस्तारै छिटो हुन्छ, तपाईंले मोड्ने मात्र हो। लेभल १ मा २७ किमीको रिङरोड छ। यो सकेपछि बाटो आफैं छान्नुहोस्: पश्चिम पोखरा, जोमसोम र मुक्तिनाथ, वा पूर्व तराई हुँदै वीरगञ्ज, विराटनगर र काँकडभिट्टा। दुर्घटनापछि पुगेको कुनै पनि लेभलबाट फेरि सुरु गर्न सकिन्छ। मौसम हरेक ठाउँको साँचो हुन्छ, चाहेमा आफैं छान्न पनि सकिन्छ।',
-      steerT: 'कसरी मोड्ने', steer: 'सडकमा ४ लेन छन्। फोनमा स्क्रिनको दायाँ वा बायाँ छेउमा ट्याप वा स्वाइप गर्दा एक लेन सर्छ। कम्प्युटरमा ← → वा A र D थिच्नुहोस्। ढिलो गर्न Brake बटन, ↓ वा S थिचिराख्नुहोस्। रोक्न P थिच्नुहोस्।',
+      steerT: 'कसरी मोड्ने', steer: 'सडकमा ४ लेन छन्। फोनमा स्क्रिनको दायाँ वा बायाँ छेउमा ट्याप वा स्वाइप गर्दा एक लेन सर्छ। कम्प्युटरमा ← → वा A र D थिच्नुहोस्। ढिलो गर्न कम्प्युटरमा Space, फोनमा Brake बटन थिचिराख्नुहोस्। रोक्न P थिच्नुहोस्।',
       ghostT: 'अरू खेलाडी', ghost: 'अहिले खेलिरहेकाहरूको नाम बाटोको माथि देखिन्छ। तपाईंको नजिक आउँदा नाम र हरियो थोप्लासहितको सानो निलो स्कुटर देखिन्छ। अरू साना स्कुटर आजका उत्कृष्ट राइडका रेकर्डिङ हुन्। कसैले ठोक्दैनन्।',
       stop: 'ठोक्किनुभयो भने खेल सकिन्छ', slow: 'यिनले गाह्रो बनाउँछन्', help: 'यिनले मद्दत गर्छन्',
       items: {
@@ -1913,7 +1933,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         walker: ['जेब्रा क्रसिङ', 'मानिस बाटो काट्छन्, ध्यान दिनुहोस्'],
         signal: ['ट्राफिक बत्ती', 'हरियो तीरमुनि जानुहोस्। रातो क्रसमा १०० अंक कट्छ र ढिलो हुन्छ'],
         cow: ['गाई', 'बाटोमै उभिन्छ, बिस्तारै हिँड्छ'], micro: ['माइक्रोबस', 'सुन्तला बत्ती बल्यो भने लेन बदल्छ'],
-        tempo: ['सफा टेम्पो', 'तपाईंभन्दा ढिलो चल्छ'], truck: ['ट्रक', 'दुई लेन ओगट्छ'],
+        tempo: ['सफा टेम्पो', 'काठमाडौंमा, तपाईंभन्दा ढिलो चल्छ'],
+        bus: ['सार्वजनिक बस', 'काठमाडौं बाहिर, ढिलो र ठूलो'], truck: ['ट्रक', 'ठूलो मालवाहक ट्रक, दुई लेन छेक्छ'],
         dog: ['कुकुर', 'बाटो काटेर दौडिन्छ'], dig: ['खनेको बाटो', 'एउटा लेन मात्र खुला हुन्छ'],
         pothole: ['खाल्डो', 'ढिलो बनाउँछ र स्कुटरको सन्तुलन बिगार्छ'], dust: ['धुलो', 'अगाडिको बाटो करिब ३ सेकेन्ड देखिँदैन'],
         shelter: ['पाटी', 'पानी पर्दा मात्र देखिन्छ। मुनिबाट जाँदा रेनकोट लगाइन्छ: पानी कम, +२५ अंक'],
@@ -1942,7 +1963,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     para(R.goalT, R.goal);
     para(R.steerT, R.steer);
     if (API) para(R.ghostT, R.ghost);
-    group('stop', R.stop, ['cow', 'bike', 'micro', 'cycle', 'tempo', 'walker', 'truck', 'dog', 'dig', 'bridge', 'wall']);
+    group('stop', R.stop, ['cow', 'bike', 'micro', 'cycle', 'tempo', 'bus', 'walker', 'truck', 'dog', 'dig', 'bridge', 'wall']);
     group('slow', R.slow, ['police', 'mapase', 'signal', 'jaam', 'pothole', 'hilo', 'stream', 'dirt', 'dust']);
     group('help', R.help, ['momo', 'helmet', 'shelter']);
     const pd = mk('div', 'rule-block'); pd.appendChild(mk('h3', '', R.pointsT));
@@ -1963,7 +1984,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     loadGhosts();
     loadBoard();
     const riders = $('riders');
-    const notice = 'Your name and rides are public. We save no location.';
+    const notice = 'Other riders can see your name. We save no location.';
     riders.textContent = notice;
     riders.hidden = false;
     $('nameRow').hidden = false;
@@ -1979,9 +2000,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     nameBox2.addEventListener('input', () => syncName(nameBox2));
     pollLive();
     setInterval(pollLive, 20000);
-    fetch(API + '/stats').then(r => r.ok ? r.json() : null).then(s => {
-      if (s && s.today && s.today.players > 0) riders.textContent = s.today.players.toLocaleString('en-US') + (s.today.players === 1 ? ' rider' : ' riders') + ' today. ' + notice;
-    }).catch(() => {});
+
   }
 
   /* The home screen shows a real road being ridden, warmed up so the first frame already has traffic */
