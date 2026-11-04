@@ -380,6 +380,21 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     }).catch(() => {});
   }
 
+  /* ---------- Police checks. Dates are from Nepal's official public holiday list for 2083 BS; add the next year's list when it is published. ---------- */
+  const FESTIVALS = [
+    ['2026-11-08', '2026-11-12', 'Tihar'], ['2026-11-15', '2026-11-15', 'Chhath'], ['2026-12-30', '2026-12-30', 'Tamu Lhosar'],
+    ['2027-01-15', '2027-01-15', 'Maghe Sankranti'], ['2027-02-07', '2027-02-07', 'Sonam Lhosar'], ['2027-03-06', '2027-03-06', 'Maha Shivaratri'],
+    ['2027-03-09', '2027-03-09', 'Gyalpo Lhosar'], ['2027-03-21', '2027-03-22', 'Holi'], ['2027-04-14', '2027-04-14', 'Nepali New Year']
+  ];
+  function festivalToday() {
+    if (sky.forcedFestival) return sky.forcedFestival;
+    const d = new Date(Date.now() + NPT_MS).toISOString().slice(0, 10);
+    const hit = FESTIVALS.find(f => d >= f[0] && d <= f[1]);
+    return hit ? hit[2] : null;
+  }
+  /* Mapase checks run at night, and all day on festivals. Other checks are for your licence. */
+  const mapaseNow = g => !!festivalToday() || skyAt(routeAt(Math.floor(kmOf(g) / SEG_KM) + 1).si).phase === 'night';
+
   /* ---------- Live riders: anyone on the road right now, updated every few seconds ---------- */
   const LIVE_EVERY = 4;
   let liveRiders = [];
@@ -505,7 +520,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     const rng = mulberry32(seed);
     const lv = level || 0, base = LEVEL_STOP[lv] * SEG_KM * PX_PER_KM;
     const effKm = () => (at - base) / PX_PER_KM + (STAGES[lv].level - 1) * 9;
-    let at = base + 650, idx = 0, sinceHelmet = 0, sinceDig = 9, sinceDust = 0, sinceSignal = 3, sinceShelter = 5, sinceBridge = 6, sinceJaam = 6, sinceNarrow = 4, sinceStream = 3;
+    let at = base + 650, idx = 0, sinceHelmet = 0, sinceDig = 9, sinceDust = 0, sinceSignal = 3, sinceShelter = 5, sinceBridge = 6, sinceJaam = 6, sinceNarrow = 4, sinceStream = 3, sincePolice = 3;
     const pick = list => list[Math.floor(rng() * list.length)];
     const shuffled = () => { const a = [0, 1, 2, 3]; for (let i = 3; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
 
@@ -535,7 +550,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
           ['truck', km > 5 ? 1 + d : 0], ['dog', km > 3 ? 1 : 0],
           ['bike', km > 1 ? 2 + d : 0], ['cycle', km > .3 ? 1.5 : 0], ['walker', km > 2 ? .7 : 0], ['signal', km > 2.5 && sinceSignal > 6 ? 2 : 0], ['bridge', km > 3.5 && sinceBridge > 12 ? 3 : 0],
           ['hilo', km > 2 ? 1.6 : 0], ['stream', km > 1.5 && sinceStream > 6 && themeAtPx(at) !== 'city' ? 4 : 0],
-          ['jaam', km > 1.5 && sinceJaam > 14 ? 2.5 : 0], ['narrow', km > 3 && sinceNarrow > 10 ? 2 : 0], ['dig', km > 6 && sinceDig > 4 ? 1 + d * 1.5 : 0],
+          ['police', km > 1 && sincePolice > 18 ? 2.5 : 0], ['jaam', km > 1.5 && sinceJaam > 14 ? 2.5 : 0], ['narrow', km > 3 && sinceNarrow > 10 ? 2 : 0], ['dig', km > 6 && sinceDig > 4 ? 1 + d * 1.5 : 0],
           ['double', km > 4 ? 1 + d * 2 : 0], ['dust', km > 8 && sinceDust > 10 ? .6 : 0]
         ];
         let total = 0; for (const w of weights) total += w[1];
@@ -557,6 +572,11 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
           /* Water coming down off the hill and across the road */
           sinceStream = 0;
           items.push({ t: 'stream', deco: true, x: 200, w: 0, h: 0, rate: 1 });
+        } else if (kind === 'police') {
+          /* A warning board, then police across the road */
+          sincePolice = 0; extra = 120; tail = 520;
+          items.push({ t: 'roadsign', deco: true, police: true, x: 200, w: 0, h: 0, rate: 1 });
+          items.push({ t: 'checkpoint', deco: true, x: 200, w: 0, h: 0, rate: 1, off: 500 });
         } else if (kind === 'jaam') {
           sinceJaam = 0; extra = 140; tail = 200;
           items.push({ t: 'jaam', deco: true, x: 200, w: 0, h: 0, rate: 1 });
@@ -596,8 +616,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
           const count = 3 + Math.floor(rng() * 3);
           for (let i = 0; i < count; i++) items.push({ t: 'momo', x: laneX(free), w: 28, h: 24, rate: 1, off: 90 + i * 44 });
         }
-        sinceHelmet++; sinceDig++; sinceDust++; sinceSignal++; sinceShelter++; sinceBridge++; sinceJaam++; sinceNarrow++; sinceStream++; idx++;
-        if (sinceShelter > 8 && kind !== 'dig' && kind !== 'bridge' && kind !== 'narrow' && kind !== 'jaam') { sinceShelter = 0; items.push({ t: 'shelter', x: laneX(free), w: LANE_W, h: 64, rate: 1, off: 150 }); }
+        sinceHelmet++; sinceDig++; sinceDust++; sinceSignal++; sinceShelter++; sinceBridge++; sinceJaam++; sinceNarrow++; sinceStream++; sincePolice++; idx++;
+        if (sinceShelter > 8 && kind !== 'dig' && kind !== 'bridge' && kind !== 'narrow' && kind !== 'jaam' && kind !== 'police') { sinceShelter = 0; items.push({ t: 'shelter', x: laneX(free), w: LANE_W, h: 64, rate: 1, off: 150 }); }
         if (sinceHelmet > 12 && rng() < .3) { sinceHelmet = 0; items.push({ t: 'helmet', x: laneX(lanes[2]), w: 30, h: 30, rate: 1, off: 60 }); }
 
         const row = { at: at + extra, kind, items };
@@ -954,6 +974,24 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     c.fillText(o.lines[0], 200, o.y - 9); c.fillText(o.lines[1], 200, o.y + 9);
     c.restore();
   }
+  function drawOfficer(c, x, y, device) {
+    c.fillStyle = '#17336b'; rr(c, x - 10, y - 7, 20, 14, 6); c.fill();
+    c.fillStyle = '#f4f6f8'; c.beginPath(); c.arc(x, y - 1, 6, 0, 7); c.fill();
+    c.fillStyle = '#17336b'; c.fillRect(x - 2, y - 2, 4, 2);
+    c.strokeStyle = '#f4f6f8'; c.lineWidth = 3; c.beginPath(); c.moveTo(x + 9, y); c.lineTo(x + 16, y + 10); c.stroke();
+    c.fillStyle = device ? '#27d17f' : '#dc143c'; c.beginPath(); c.arc(x + 17, y + 13, device ? 4 : 6, 0, 7); c.fill();
+  }
+  function drawCheckpoint(c, o) {
+    if (o.icon) { drawOfficer(c, -4, -2, !!o.device); return; }
+    c.save();
+    /* Cones across the road with officers in the middle */
+    c.fillStyle = '#ff7a1a';
+    for (let i = 0; i < 9; i++) { const x = ROAD_L + 18 + i * 34.5; c.beginPath(); c.moveTo(x, o.y - 10); c.lineTo(x + 8, o.y + 8); c.lineTo(x - 8, o.y + 8); c.fill(); c.fillStyle = '#fff'; c.fillRect(x - 4, o.y - 1, 8, 3); c.fillStyle = '#ff7a1a'; }
+    drawOfficer(c, 160, o.y - 26, false); drawOfficer(c, 240, o.y - 26, true);
+    c.fillStyle = '#17336b'; rr(c, ROAD_L + 6, o.y - 76, 88, 38, 5); c.fill();
+    c.fillStyle = '#fff'; c.font = '800 12px Mukta, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('TRAFFIC', ROAD_L + 50, o.y - 57);
+    c.restore();
+  }
   function drawBridgeIcon(c) {
     c.fillStyle = '#3f8f9a'; c.fillRect(-18, 2, 36, 14);
     c.fillStyle = '#a9adb1'; c.fillRect(-18, -8, 22, 10);
@@ -979,7 +1017,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     c.fillStyle = '#c9a97a';
     for (const p of [[-10, 4, 11], [8, 5, 12], [0, -6, 13], [-16, -4, 7], [16, -4, 8]]) { c.beginPath(); c.arc(p[0], p[1], p[2], 0, 7); c.fill(); }
   }
-  const ART = { cow: drawCow, pothole: drawPothole, tempo: drawTempo, micro: drawMicro, truck: drawTruck, dog: drawDog, dig: drawDig, momo: drawMomo, helmet: drawHelmet, bike: drawBike, cycle: drawCycle, walker: drawWalker, signal: drawSignal, shelter: drawShelter, bridge: drawBridge, bypass: drawBypass, bridgesign: drawBridgeSign, hilo: drawHilo, stream: drawStream, jaam: drawJaam, wall: drawWall, roadsign: drawRoadSign };
+  const ART = { cow: drawCow, pothole: drawPothole, tempo: drawTempo, micro: drawMicro, truck: drawTruck, dog: drawDog, dig: drawDig, momo: drawMomo, helmet: drawHelmet, bike: drawBike, cycle: drawCycle, walker: drawWalker, signal: drawSignal, shelter: drawShelter, bridge: drawBridge, bypass: drawBypass, bridgesign: drawBridgeSign, hilo: drawHilo, stream: drawStream, jaam: drawJaam, wall: drawWall, roadsign: drawRoadSign, checkpoint: drawCheckpoint };
 
   const SHOULDER = { city: '#8f8a7c', hills: '#7a6a4f', lake: '#8f8a7c', himal: '#8a7c68', terai: '#9a8a62', tea: '#8c7f5c' };
   const ROAD_TONE = { city: '#3a3c48', hills: '#3f4049', lake: '#3c3f4c', himal: '#615a50', terai: '#454650', tea: '#41434d' };
@@ -1185,7 +1223,9 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       for (const it of g.row.items) {
         if (it.t === 'dust') { g.dust = 3.5; if (!g.attract) float(g, 200, 90, 'Dhulo! Hold your line', '#ffe7b0'); continue; }
         if (it.t === 'shelter' && (g.coat || skyAt(routeAt(Math.floor(kmOf(g) / SEG_KM) + 1).si).weather !== 'rain')) continue;
-        g.objs.push(Object.assign({}, it, { y: -80 - (it.off || 0) - (g.dist - g.row.at) }));
+        const placed = Object.assign({}, it, { y: -80 - (it.off || 0) - (g.dist - g.row.at) });
+        if (it.police) placed.lines = [mapaseNow(g) ? 'Mapase check ahead' : 'Licence check ahead', 'Hold Brake to stop'];
+        g.objs.push(placed);
       }
       g.row = g.road.next();
     }
@@ -1201,23 +1241,31 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     if (!dirt) g.dirtTold = false;
     if (g.jam > 0) {
       g.jam -= dt;
-      if (g.jam <= 0) { for (const o of g.objs) if (o.t === 'jaam') o.gone = true; g.jamText = 0; if (!g.attract) sfx.green(); }
+      if (g.jam <= 0) {
+        for (const o of g.objs) if (o.t === 'jaam' || o.t === 'checkpoint') o.gone = true;
+        if (g.checkEnd) { g.checkEnd(); g.checkEnd = null; }
+        g.holdMsg = null; g.hospital = false;
+        if (!g.attract) sfx.green();
+      }
     }
     /* Brake: held by the rider. Jam ahead: the scooter eases down by itself, so it never stops dead. */
     g.brakeF = (g.brakeF === undefined ? 1 : g.brakeF) + ((keys.brake && !g.attract && !g.bot ? .35 : 1) - (g.brakeF === undefined ? 1 : g.brakeF)) * Math.min(1, dt * 5);
     let ease = 1;
-    const jamAhead = g.objs.find(o => o.t === 'jaam' && !o.held && !o.gone);
+    const jamAhead = g.objs.find(o => (o.t === 'jaam' || o.t === 'checkpoint') && !o.held && !o.gone);
     if (jamAhead && !g.attract) {
       const gap = py - 118 - jamAhead.y;
+      const isCheck = jamAhead.t === 'checkpoint';
       if (gap < 560 && !jamAhead.warned) {
         jamAhead.warned = true;
-        if (!g.bot) float(g, 200, H * .3, 'Jaam ahead! Brake', '#ffb000');
+        if (!g.bot && !isCheck) float(g, 200, H * .3, 'Jaam ahead! Brake', '#ffb000');
       }
-      if (gap < 300) ease = Math.max(.22, gap / 300);
-      if (gap < 300 && keys.brake) jamAhead.braked = true;
+      /* Police only ease you down at the last moment; stopping properly is up to you */
+      const easeFrom = isCheck ? (jamAhead.braked ? 300 : 110) : 300;
+      if (gap < easeFrom) ease = Math.max(.22, gap / easeFrom);
+      if (gap < (isCheck ? 460 : 300) && keys.brake) jamAhead.braked = true;
     }
     g.braking = !crashed && g.jam <= 0 && (g.brakeF < .85 || ease < .85);
-    const v = g.jam > 0 ? 0 : crashed ? Math.max(0, speedOf(g) * (1 - g.crashT / .35)) : speedOf(g) * g.slow * g.surf * g.brakeF * ease;
+    const v = g.jam > 0 ? 0 : crashed ? Math.max(0, speedOf(g) * (1 - g.crashT / .35)) : Math.max(ease < 1 ? 120 : 0, speedOf(g) * g.slow * g.surf * Math.min(g.brakeF, ease));
     g.dist += v * dt;
     spawn(g);
 
@@ -1307,6 +1355,27 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       if (o.t === 'stream' && !o.crossed && o.y >= py && !g.attract && !crashed) {
         o.crossed = true; g.slow = Math.min(g.slow, .72); sfx.bump(); float(g, g.x, py - 44, 'Khola! Splash', '#bfe7ff');
       }
+      if (o.t === 'checkpoint' && !o.held && o.y >= py - 118 && !g.attract && !crashed) {
+        o.held = true;
+        const mapase = mapaseNow(g), fest = festivalToday(), stopped = o.braked;
+        if (stopped) {
+          g.jam = mapase ? 2.5 : 2;
+          g.holdMsg = mapase ? 'Mapase check: blow here' : 'Licence check';
+          sfx.near();
+          g.checkEnd = () => { g.greens++; float(g, g.x, py - 44, mapase ? 'Mapase clear, 0.00. +20' : 'Licence thik chha! +20', '#27d17f'); };
+        } else if (mapase) {
+          g.jam = 6; g.hospital = true;
+          g.holdMsg = 'Did not stop: hospital test';
+          sfx.whistle();
+          g.checkEnd = () => { g.fines++; float(g, g.x, py - 44, 'Test clear. Fine -100', '#ff8a98'); };
+        } else {
+          g.jam = 4;
+          g.holdMsg = 'Prrrt! You did not stop';
+          sfx.whistle();
+          g.checkEnd = () => { g.fines++; float(g, g.x, py - 44, 'Police fine -100', '#ff8a98'); };
+        }
+        if (fest && mapase && !stopped) g.holdMsg = fest + ' check: hospital test';
+      }
       if (o.t === 'jaam' && !o.held && o.y >= py - 118 && !g.attract && !crashed) {
         o.held = true; g.jam = 3; sfx.bump();
         if (o.braked) { g.greens++; float(g, g.x, py - 44, 'Smooth stop! +20', '#27d17f'); }
@@ -1361,7 +1430,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     ctx.save();
     if (shake > 0) ctx.translate((hash(performance.now()) - .5) * 12 * shake * 2, (hash(performance.now() + 7) - .5) * 12 * shake * 2);
     drawScenery(g.dist);
-    const py = playerY(), order = { stream: -2, wall: -1, hilo: 0, roadsign: 0, jaam: 4, bypass: -1, bridgesign: 0, bridge: 2, shelter: 0, walker: 0, pothole: 0, momo: 1, helmet: 1, dig: 2, dog: 3, cow: 3, cycle: 3, bike: 4, tempo: 4, micro: 4, truck: 5, signal: 6 };
+    const py = playerY(), order = { stream: -2, wall: -1, hilo: 0, roadsign: 0, checkpoint: 3, jaam: 4, bypass: -1, bridgesign: 0, bridge: 2, shelter: 0, walker: 0, pothole: 0, momo: 1, helmet: 1, dig: 2, dog: 3, cow: 3, cycle: 3, bike: 4, tempo: 4, micro: 4, truck: 5, signal: 6 };
     /* painted gate on the road, behind traffic */
     for (let i = g.gate - 1; i <= g.gate + 1; i++) if (i > 0) drawGate(i, py - (i * SEG_KM * PX_PER_KM - g.dist));
     renderGhosts(g, py);
@@ -1418,9 +1487,16 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       }
     }
     if (g.jam > 0) {
-      const msg = 'Jaam! Wait ' + Math.ceil(g.jam);
+      if (g.hospital) {
+        /* Hospital card while the test runs */
+        ctx.fillStyle = 'rgba(255,255,255,.96)'; rr(ctx, 110, py - 310, 180, 110, 6); ctx.fill();
+        ctx.fillStyle = '#dc143c'; ctx.fillRect(190, py - 300, 20, 56); ctx.fillRect(172, py - 282, 56, 20);
+        ctx.fillStyle = '#14151c'; ctx.font = '800 15px Mukta, sans-serif'; ctx.fillText('Hospital: mapase test', 200, py - 222);
+      }
+      const msg = (g.holdMsg || 'Jaam!') + ' Wait ' + Math.ceil(g.jam);
       ctx.font = '800 18px Mukta, sans-serif'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(9,18,56,.9)';
-      ctx.strokeText(msg, 200, py - 150); ctx.fillStyle = '#ffb000'; ctx.fillText(msg, 200, py - 150);
+      const msgY = g.hospital ? py - 335 : py - 240;
+      ctx.strokeText(msg, 200, msgY); ctx.fillStyle = '#ffb000'; ctx.fillText(msg, 200, msgY);
     }
     if (g.banner > 0 && !g.attract) {
       const here = routeAt(g.bannerI), s = here.stop;
@@ -1552,7 +1628,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     const best = save.best;
     const road = save.day - LAUNCH + 1;
     $('homeKicker').textContent = 'Road #' + road + ' · ' + dayLabel(save.day) + (save.tries ? ' · Best ' + (best ? best.score.toLocaleString('en-US') : 0) : '');
-    $('skyNow').textContent = skyLabel(startLevel);
+    const fest = festivalToday();
+    $('skyNow').textContent = skyLabel(startLevel) + (fest ? ' · ' + fest + ': mapase checks all day' : '');
     $('sideBest').textContent = best ? best.score.toLocaleString('en-US') : '0';
     $('sideTries').textContent = save.tries;
     $('sideStreak').textContent = save.streak;
@@ -1788,7 +1865,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     cow: [drawCow, { w: 60, h: 34 }, .9], micro: [drawMicro, { w: 52, h: 90 }, .62], tempo: [drawTempo, {}, .9],
     truck: [drawTruck, {}, .36], dog: [drawDog, { dogV: 1 }, 1.2], dig: [drawDig, { w: 78, h: 34 }, .7],
     bike: [drawBike, {}, 1.3], cycle: [drawCycle, {}, 1.3], walker: [drawWalker, { icon: true }, 1.6], signal: [drawSignal, { icon: true }, .9],
-    bridge: [drawBridgeIcon, {}, 1.2], dirt: [drawDirtIcon, {}, 1.2], hilo: [drawHilo, { icon: true }, 1.1], stream: [drawStream, { icon: true }, 1], jaam: [drawJaam, { icon: true }, 1], wall: [drawWall, { icon: true }, 1], shelter: [drawShelter, { icon: true }, .8], pothole: [drawPothole, {}, 1], dust: [drawDust, {}, 1], momo: [drawMomo, {}, 1.5], helmet: [drawHelmet, {}, 1.4]
+    bridge: [drawBridgeIcon, {}, 1.2], dirt: [drawDirtIcon, {}, 1.2], hilo: [drawHilo, { icon: true }, 1.1], stream: [drawStream, { icon: true }, 1], jaam: [drawJaam, { icon: true }, 1], wall: [drawWall, { icon: true }, 1], police: [drawCheckpoint, { icon: true }, 1.4], mapase: [drawCheckpoint, { icon: true, device: true }, 1.4], shelter: [drawShelter, { icon: true }, .8], pothole: [drawPothole, {}, 1], dust: [drawDust, {}, 1], momo: [drawMomo, {}, 1.5], helmet: [drawHelmet, {}, 1.4]
   };
   const RULES = {
     en: {
@@ -1801,6 +1878,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         dirt: ['Off-road', 'No tarmac, so you ride much slower'],
         hilo: ['Hilo bato', 'Mud makes the scooter slip'],
         stream: ['Khola on the road', 'Water from the hills slows you'],
+        police: ['Licence check', 'Hold Brake before the police: +20. Do not stop: -100 and a longer wait'],
+        mapase: ['Mapase check', 'At night and on festivals. Do not stop and you go to hospital for a test: -100 and a 6 second wait'],
         jaam: ['Jaam', 'You slow down and wait 3 seconds. Brake early for +20'],
         wall: ['Narrow road', 'Walls close the outside lanes, so keep to the middle'],
         bike: ['Motorbike', 'Weaves around its lane'], cycle: ['Cycle', 'Slow, and wobbles a little'],
@@ -1826,6 +1905,8 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
         dirt: ['कच्ची बाटो', 'पिच हुँदैन, स्कुटर निकै ढिलो चल्छ'],
         hilo: ['हिलो बाटो', 'हिलोमा स्कुटर चिप्लिन्छ'],
         stream: ['बाटोमा खोला', 'पहाडको पानीले ढिलो बनाउँछ'],
+        police: ['लाइसेन्स जाँच', 'प्रहरीअघि ब्रेक लगाउनुहोस्: +२०। नरोके -१०० र धेरै पर्खाइ'],
+        mapase: ['मापसे जाँच', 'रातमा र चाडपर्वमा हुन्छ। नरोके अस्पतालमा जाँच: -१०० र ६ सेकेन्ड पर्खाइ'],
         jaam: ['जाम', 'ढिलो भएर ३ सेकेन्ड पर्खनुपर्छ। पहिल्यै ब्रेक लगाए +२०'],
         wall: ['साँघुरो बाटो', 'छेउका लेन बन्द हुन्छन्, बीचमा बस्नुहोस्'],
         bike: ['मोटरबाइक', 'लेनभित्रै घुमाउँदै चल्छ'], cycle: ['साइकल', 'ढिलो चल्छ, अलिअलि हल्लिन्छ'],
@@ -1862,7 +1943,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
     para(R.steerT, R.steer);
     if (API) para(R.ghostT, R.ghost);
     group('stop', R.stop, ['cow', 'bike', 'micro', 'cycle', 'tempo', 'walker', 'truck', 'dog', 'dig', 'bridge', 'wall']);
-    group('slow', R.slow, ['signal', 'jaam', 'pothole', 'hilo', 'stream', 'dirt', 'dust']);
+    group('slow', R.slow, ['police', 'mapase', 'signal', 'jaam', 'pothole', 'hilo', 'stream', 'dirt', 'dust']);
     group('help', R.help, ['momo', 'helmet', 'shelter']);
     const pd = mk('div', 'rule-block'); pd.appendChild(mk('h3', '', R.pointsT));
     const pg = mk('div', 'points');
@@ -1962,6 +2043,7 @@ textarea#fallback { width: 100%; height: 124px; background: var(--navy); color: 
       return { km: +kmOf(g).toFixed(1), cause: g.cause, score: scoreOf(g), momos: g.momos, nears: g.nears };
     },
     setSky(phase, weather) { sky.forced = { phase, weather }; },
+    setFestival(name) { sky.forcedFestival = name; },
     seedFor, todayNumber
   };
 })();
