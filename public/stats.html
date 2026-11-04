@@ -19,9 +19,17 @@ th { color: var(--muted); font-weight: 600; font-size: 14px; }
 .wide { overflow-x: auto; }
 .wide table { min-width: 680px; }
 p { margin: 0; color: var(--muted); }
+#gate[hidden] { display: none; }
+#gate { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+#gate input { flex: 1 1 180px; min-width: 0; padding: 8px; font: inherit; background: transparent; color: var(--paper); border: 1px solid var(--muted); border-radius: 3px; }
+#gate button { padding: 8px 16px; font: inherit; font-weight: 700; background: var(--marigold); color: var(--navy); border: 0; border-radius: 3px; cursor: pointer; }
+#data { display: grid; gap: 28px; }
+#data[hidden] { display: none; }
 </style></head><body><main>
 <h1>Ring Road Rush stats</h1>
-<p id="msg">Loading…</p>
+<form id="gate"><label for="statsKey">Owner password</label><input id="statsKey" type="password" autocomplete="current-password" required><button type="submit">Open</button></form>
+<p id="msg">This page is private.</p>
+<div id="data" hidden>
 <div class="tiles" id="tiles"></div>
 <section><h2>This week's top riders</h2><div class="wide"><table id="week"></table></div></section>
 <section><h2>Riding now</h2><p id="liveNone">Nobody is on the road at the moment.</p><table id="live"></table></section>
@@ -30,23 +38,29 @@ p { margin: 0; color: var(--muted); }
 <section><h2>Last 14 days</h2><table id="days"></table></section>
 <section><h2>What ended rides</h2><table id="crashes"></table></section>
 <section><h2>Devices</h2><table id="devices"></table></section>
+</div>
 </main><script>
-const NAMES = { cow:'Cow', micro:'Microbus', tempo:'Safa Tempo', truck:'Truck', dog:'Street dog', dig:'Dug-up road', bike:'Motorbike', cycle:'Cycle', walker:'Zebra crossing', bridge:'Closed bridge', wall:'Narrow road' };
+const NAMES = { cow:'Cow', micro:'Microbus', tempo:'Safa Tempo', truck:'Truck', dog:'Street dog', dig:'Dug-up road', bike:'Motorbike', cycle:'Cycle', walker:'Zebra crossing', bridge:'Closed bridge', wall:'Narrow road', bus:'Public bus' };
 const n = v => Number(v || 0).toLocaleString('en-US');
 function table(id, heads, rows) {
   const t = document.getElementById(id); t.textContent = '';
   const tr = (cells, tag) => { const r = document.createElement('tr'); cells.forEach(c => { const e = document.createElement(tag); e.textContent = c; r.appendChild(e); }); t.appendChild(r); };
   tr(heads, 'th'); rows.forEach(r => tr(r, 'td'));
 }
-fetch('/api/stats').then(r => { if (!r.ok) throw 0; return r.json(); }).then(s => {
-  document.getElementById('msg').textContent = 'Each rider is one browser, so one person on two devices shows twice. Riders appear by name only if they typed one.';
+function showGate(text) { document.getElementById('msg').textContent = text; document.getElementById('gate').hidden = false; document.getElementById('data').hidden = true; }
+let started = false;
+function load(key) {
+const auth = { headers: { 'x-stats-key': key } };
+document.getElementById('tiles').textContent = '';
+fetch('/api/stats', auth).then(r => { if (r.status === 401) throw 'key'; if (!r.ok) throw 0; return r.json(); }).then(s => {
+  document.getElementById('gate').hidden = true; document.getElementById('data').hidden = false; document.getElementById('msg').textContent = 'Each rider is one browser, so one person on two devices shows twice. Riders appear by name only if they typed one.';
   const tiles = [[s.all_time.players,'Players, all time'],[s.all_time.plays,'Rides, all time'],[s.today.players,'Players today'],[s.today.plays,'Rides today'],[s.returning_players,'Came back another day'],[s.rides.average_km,'Average km per ride'],[s.rides.full_laps,'Full laps'],[s.rides.top_score,'Top score']];
   const box = document.getElementById('tiles');
   tiles.forEach(([v,l]) => { const d = document.createElement('div'), b = document.createElement('b'), sp = document.createElement('span'); b.textContent = n(v); sp.textContent = l; d.append(b, sp); box.appendChild(d); });
   table('days', ['Date','Players','Rides'], s.last_14_days.slice().reverse().map(d => [d.date, n(d.players), n(d.plays)]));
   table('crashes', ['Cause','Rides'], s.crashes.map(c => [NAMES[c.cause] || c.cause, n(c.rides)]));
   table('devices', ['Device','Players'], s.devices.map(d => [d.device, n(d.players)]));
-}).catch(() => { document.getElementById('msg').textContent = 'Could not load the stats. Refresh the page to try again.'; });
+}).catch(err => { showGate(err === 'key' ? 'That password is wrong, or the password has not been set up yet.' : 'Could not load the stats. Try again.'); });
 const when = ms => new Date(ms).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const who = p => p.name || 'Rider ' + p.id;
 const loadLive = () => fetch('/api/live', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(d => {
@@ -54,14 +68,16 @@ const loadLive = () => fetch('/api/live', { cache: 'no-store' }).then(r => r.ok 
   document.getElementById('liveNone').hidden = d.riders.length > 0;
   table('live', d.riders.length ? ['Rider','km'] : [], d.riders.map(r => [who(r), ((r.d * 10) / 3333).toFixed(1)]));
 }).catch(() => {});
-loadLive(); setInterval(loadLive, 5000);
-fetch('/api/leaderboard').then(r => r.ok ? r.json() : null).then(d => {
+loadLive(); if (!started) { started = true; setInterval(loadLive, 5000); }
+fetch('/api/leaderboard', auth).then(r => r.ok ? r.json() : null).then(d => {
   if (d) table('week', ['#','Rider','Score','Farthest km'], d.week.map((r, i) => [String(i + 1), who(r), n(r.score), r.km.toFixed(1)]));
 }).catch(() => {});
-fetch('/api/players').then(r => { if (!r.ok) throw 0; return r.json(); }).then(d => {
+fetch('/api/players', auth).then(r => { if (!r.ok) throw 0; return r.json(); }).then(d => {
   table('players', ['Rider','Rides','Days played','Farthest km','Best score','Momos','Device','First played','Last played'],
     d.players.map(p => [who(p), n(p.rides), n(p.days), p.best_km == null ? '-' : p.best_km.toFixed(1), n(p.best_score), n(p.momos), p.devices || '-', when(p.first_seen), when(p.last_seen)]));
   table('rides', ['Rider','Time','Road','km','Score','Momos','Ended by','Device'],
     d.recent_rides.map(r => [who(r), when(r.created_at), '#' + r.road, r.km.toFixed(1), n(r.score), n(r.momos), NAMES[r.cause] || r.cause, r.device]));
 }).catch(() => {});
+}
+document.getElementById('gate').addEventListener('submit', e => { e.preventDefault(); load(document.getElementById('statsKey').value); });
 </script></body></html>
